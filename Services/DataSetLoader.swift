@@ -20,7 +20,7 @@ enum DatasetError: Error, LocalizedError {
         case .fileNotFound(let name):
             return "Could not find \(name).csv inside the app bundle."
         case .missingColumns:
-            return "The CSV must contain both a 'label' and a 'text' column."
+            return "The CSV must contain both a 'category' and a 'text' column."
         case .empty:
             return "The dataset has no usable rows."
         }
@@ -29,11 +29,16 @@ enum DatasetError: Error, LocalizedError {
 
 /// Loads a bundled CSV of labeled text into an array of `DataPoint`.
 ///
-/// We parse the CSV by hand instead of using Apple's `CreateML` /`MLDataTable`,
+/// We parse the CSV by hand instead of using Apple's `CreateML` / `MLDataTable`,
 /// for two reasons:
 ///   1. CreateML is a *macOS-only* framework — importing it breaks the iOS build.
 ///   2. Doing it ourselves keeps the whole pipeline transparent, which is the
 ///      entire point of this teaching app.
+///
+/// Expected CSV shape:
+///     category,text
+///     sport,"The striker scored a hat-trick ..."
+///     business,"The company reported record earnings ..."
 class DatasetLoader {
 
     /// Reads `<filename>.csv` from the app bundle and returns the parsed rows.
@@ -45,45 +50,48 @@ class DatasetLoader {
             throw DatasetError.fileNotFound(filename)
         }
 
-        // Read the whole file into one big String.
+        // Read the whole file into one big String, then split into lines.
         let raw = try String(contentsOf: url, encoding: .utf8)
-
-        // Normalize Windows line endings (\r\n) to \n, then split into lines.
-        // `omittingEmptySubsequences` drops blank lines (e.g. a trailing newline).
         let lines = raw
             .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
 
-        // The first line is the header row: it names the columns.
+        // The first line is the header: it names the columns.
         guard let header = lines.first else { throw DatasetError.empty }
         let columns = parseCSVLine(header).map { $0.lowercased() }
 
-        // We don't assume a fixed column order — we look up where 'label' and
-        // 'text' actually are. `firstIndex(of:)` returns nil if not present.
-        guard let labelIndex = columns.firstIndex(of: "label"),
+        // We don't assume column order — we look up where each column actually is.
+        guard let categoryIndex = columns.firstIndex(of: "category"),
               let textIndex = columns.firstIndex(of: "text") else {
             throw DatasetError.missingColumns
         }
 
-        var points: [DataPoint] = []
-
-        // `dropFirst()` skips the header; loop over the actual data rows.
-        for line in lines.dropFirst() {
+        // PASS 1 — pull out the raw (category, text) pairs.
+        var rawRows: [(category: String, text: String)] = []
+        for line in lines.dropFirst() {                 // dropFirst() skips the header
             let fields = parseCSVLine(line)
+            guard fields.count > max(categoryIndex, textIndex) else { continue }
 
-            // Defensive: make sure this row actually has the columns we need.
-            guard fields.count > max(labelIndex, textIndex) else { continue }
+            let category = fields[categoryIndex].trimmingCharacters(in: .whitespaces)
+            let text = fields[textIndex].trimmingCharacters(in: .whitespaces)
+            guard !category.isEmpty, !text.isEmpty else { continue }
 
-            // The label is an integer (0 or 1). If it can't be parsed, skip the row.
-            guard let label = Int(fields[labelIndex].trimmingCharacters(in: .whitespaces)) else { continue }
-
-            let text = fields[textIndex]
-            points.append(DataPoint(text: text, label: label))
+            rawRows.append((category, text))
         }
+        guard !rawRows.isEmpty else { throw DatasetError.empty }
 
-        guard !points.isEmpty else { throw DatasetError.empty }
-        return points
+        // Build a STABLE label map: take the distinct category names, sort them
+        // alphabetically, and number them 0, 1, 2 ... So {business, sport} always
+        // becomes business = 0, sport = 1, no matter what order the rows are in.
+        let classNames = Set(rawRows.map { $0.category }).sorted()
+        let labelOf = Dictionary(uniqueKeysWithValues:
+            classNames.enumerated().map { (index, name) in (name, index) })
+
+        // PASS 2 — build DataPoints carrying both the readable name and the index.
+        return rawRows.map { row in
+            DataPoint(text: row.text, category: row.category, label: labelOf[row.category]!)
+        }
     }
 
     /// Splits ONE CSV line into its fields.
@@ -104,7 +112,7 @@ class DatasetLoader {
 
             if insideQuotes {
                 if c == "\"" {
-                    // A quote inside quotes: is it an escaped "" or the closing quote?
+                    // A quote inside quotes: escaped "" or the closing quote?
                     if i + 1 < chars.count && chars[i + 1] == "\"" {
                         current.append("\"")   // escaped double-quote -> one quote
                         i += 1                 // consume the second quote too

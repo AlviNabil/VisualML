@@ -28,4 +28,16 @@ class PipelineViewModel: ObservableObject {
             statusMessage = "Error: \(error.localizedDescription)"
         }
     }
+
+    /// How many documents belong to each class, sorted by label (0, 1, ...).
+    /// Used by the UI to show a per-class count and legend.
+    ///
+    /// `Dictionary(grouping:by:)` buckets the documents by category, e.g.
+    /// ["sport": [..60 items..], "business": [..60 items..]]. We then turn each
+    /// bucket into a small tuple the View can display.
+    var classCounts: [(name: String, label: Int, count: Int)] {
+        Dictionary(grouping: dataPoints, by: { $0.category })
+            .map { (name, items) in (name: name, label: items[0].label, count: items.count) }
+            .sorted { $0.label < $1.label }
+    }
 }
