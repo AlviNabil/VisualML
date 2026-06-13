@@ -17,15 +17,15 @@ class PipelineViewModel: ObservableObject {
     
     func loadDataset() {
         statusMessage = "Loading..."
-        
-        Task {
-            do {
-                // Change "dataset" to whatever you name your CSV file
-                self.dataPoints = try await loader.loadCSV(filename: "dataset")
-                self.statusMessage = "Successfully loaded \(self.dataPoints.count) items."
-            } catch {
-                self.statusMessage = "Error: Please check your CSV format."
-            }
+
+        do {
+            // "dataset" matches dataset.csv in the app bundle.
+            dataPoints = try loader.loadCSV(filename: "dataset")
+            statusMessage = "Loaded \(dataPoints.count) documents."
+        } catch {
+            // `localizedDescription` comes from our DatasetError.errorDescription,
+            // so this tells us exactly what went wrong.
+            statusMessage = "Error: \(error.localizedDescription)"
         }
     }
 }
