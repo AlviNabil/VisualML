@@ -30,7 +30,9 @@ struct ContentView: View {
                 // A reload button in the top-right of the navigation bar.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        viewModel.loadDataset()
+                        Task{
+                            await viewModel.loadDataset()
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -41,7 +43,9 @@ struct ContentView: View {
         // app is useful immediately instead of starting on an empty screen.
         .onAppear {
             if viewModel.dataPoints.isEmpty {
-                viewModel.loadDataset()
+                Task{
+                    await viewModel.loadDataset()
+                }
             }
         }
     }
@@ -57,20 +61,29 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Text(viewModel.statusMessage)
                 .foregroundStyle(.secondary)
-            Button("Load Dataset") { viewModel.loadDataset() }
+            Button("Load Dataset") {
+                Task{await viewModel.loadDataset()}
+            }
                 .buttonStyle(.borderedProminent)
         }
         .padding()
     }
 
-    /// Shown once documents are loaded: a stats bar on top, scrollable list below.
+    /// Shown once documents are loaded: the stats bar is now the FIRST ROW of
+    /// the List, so it scrolls away with the documents instead of staying pinned.
     private var loadedView: some View {
-        VStack(spacing: 0) {
+        // Using `List { ... }` (the builder form) instead of `List(array)` lets us
+        // mix a custom header row with the data rows in one scrollable container.
+        List {
+            // Header row. `listRowInsets(EdgeInsets())` removes List's default
+            // padding so statsBar's own padding controls its look; hiding the
+            // separator keeps it looking like a header, not a data cell.
             statsBar
-            Divider()
-            // `List` is iOS's efficient scrolling table. Because DataPoint is
-            // Identifiable, we can hand the array straight to List.
-            List(viewModel.dataPoints) { point in
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+
+            // `ForEach` produces one row per document.
+            ForEach(viewModel.dataPoints) { point in
                 HStack(alignment: .top, spacing: 12) {
                     // A small colored "chip" showing the class.
                     Text(point.category.capitalized)
@@ -86,8 +99,8 @@ struct ContentView: View {
                 }
                 .padding(.vertical, 4)
             }
-            .listStyle(.plain)
         }
+        .listStyle(.plain)
     }
 
     /// A header summarizing how many documents and how many per class.

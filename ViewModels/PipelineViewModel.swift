@@ -15,12 +15,13 @@ class PipelineViewModel: ObservableObject {
     
     private let loader = DatasetLoader()
     
-    func loadDataset() {
+    func loadDataset() async{
         statusMessage = "Loading..."
-
         do {
+            try? await Task.sleep(for: .seconds(5))
             // "dataset" matches dataset.csv in the app bundle.
             dataPoints = try loader.loadCSV(filename: "dataset")
+//            dump(dataPoints.prefix(10))
             statusMessage = "Loaded \(dataPoints.count) documents."
         } catch {
             // `localizedDescription` comes from our DatasetError.errorDescription,

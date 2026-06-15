@@ -49,6 +49,7 @@ class DatasetLoader {
         guard let url = Bundle.main.url(forResource: filename, withExtension: "csv") else {
             throw DatasetError.fileNotFound(filename)
         }
+        
 
         // Read the whole file into one big String, then split into lines.
         let raw = try String(contentsOf: url, encoding: .utf8)
@@ -56,23 +57,31 @@ class DatasetLoader {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
-
+        print(lines[1])
+        
         // The first line is the header: it names the columns.
         guard let header = lines.first else { throw DatasetError.empty }
+        debugPrint(header)
+        
         let columns = parseCSVLine(header).map { $0.lowercased() }
-
+        debugPrint("Column Names: \(columns)")
+        
         // We don't assume column order — we look up where each column actually is.
         guard let categoryIndex = columns.firstIndex(of: "category"),
               let textIndex = columns.firstIndex(of: "text") else {
             throw DatasetError.missingColumns
         }
-
+        debugPrint("\(categoryIndex) --- \(textIndex) --- \(max(categoryIndex, textIndex))")
+        
         // PASS 1 — pull out the raw (category, text) pairs.
         var rawRows: [(category: String, text: String)] = []
         for line in lines.dropFirst() {                 // dropFirst() skips the header
             let fields = parseCSVLine(line)
             guard fields.count > max(categoryIndex, textIndex) else { continue }
-
+//            if(index == 0) {
+//                debugPrint(fields, fiel)
+//            }
+            
             let category = fields[categoryIndex].trimmingCharacters(in: .whitespaces)
             let text = fields[textIndex].trimmingCharacters(in: .whitespaces)
             guard !category.isEmpty, !text.isEmpty else { continue }
@@ -85,9 +94,11 @@ class DatasetLoader {
         // alphabetically, and number them 0, 1, 2 ... So {business, sport} always
         // becomes business = 0, sport = 1, no matter what order the rows are in.
         let classNames = Set(rawRows.map { $0.category }).sorted()
+        debugPrint(classNames)
         let labelOf = Dictionary(uniqueKeysWithValues:
             classNames.enumerated().map { (index, name) in (name, index) })
-
+        
+        debugPrint(labelOf)
         // PASS 2 — build DataPoints carrying both the readable name and the index.
         return rawRows.map { row in
             DataPoint(text: row.text, category: row.category, label: labelOf[row.category]!)
@@ -101,6 +112,7 @@ class DatasetLoader {
     /// This mini state-machine handles double-quoted fields and the CSV rule
     /// that a doubled quote `""` inside a quoted field means one literal quote.
     private func parseCSVLine(_ line: String) -> [String] {
+//        debugPrint("Line: \(line)")
         var fields: [String] = []
         var current = ""
         var insideQuotes = false
@@ -137,6 +149,7 @@ class DatasetLoader {
         }
 
         fields.append(current)   // the last field has no trailing comma
+//        print(fields)
         return fields
     }
 }
