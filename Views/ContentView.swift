@@ -27,10 +27,20 @@ struct ContentView: View {
             }
             .navigationTitle("VisualML")
             .toolbar {
-                // A reload button in the top-right of the navigation bar.
+                // Top-left: go to the next pipeline stage (Bag-of-Words).
+                // NavigationLink pushes a new screen onto the NavigationStack.
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        BagOfWordsView(viewModel: viewModel)
+                    } label: {
+                        Label("Bag of Words", systemImage: "square.grid.3x3.fill")
+                    }
+                    .disabled(viewModel.dataPoints.isEmpty)
+                }
+                // Top-right: reload the dataset.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task{
+                        Task {
                             await viewModel.loadDataset()
                         }
                     } label: {

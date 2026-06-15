@@ -12,9 +12,15 @@ import Combine
 class PipelineViewModel: ObservableObject {
     @Published var dataPoints: [DataPoint] = []
     @Published var statusMessage: String = "Ready to load data"
-    
+
+    /// The hyperparameter knobs (so far: stop-words, minDocFreq, maxVocab).
+    @Published var config = PipelineConfig()
+    /// The Bag-of-Words matrix once built (nil until we build it).
+    @Published var matrix: DocTermMatrix?
+
     private let loader = DatasetLoader()
-    
+    private let nlp = NLPProcessor()
+
     func loadDataset() async{
         statusMessage = "Loading..."
         do {
@@ -28,6 +34,14 @@ class PipelineViewModel: ObservableObject {
             // so this tells us exactly what went wrong.
             statusMessage = "Error: \(error.localizedDescription)"
         }
+    }
+
+    /// Build the Bag-of-Words document-term matrix from the loaded documents,
+    /// using the current `config`. Fast enough (D≈120) to run on the main actor;
+    /// we'll move heavier stages (SVD) off the main thread later.
+    func buildBagOfWords() {
+        guard !dataPoints.isEmpty else { return }
+        matrix = nlp.buildMatrix(from: dataPoints, config: config)
     }
 
     /// How many documents belong to each class, sorted by label (0, 1, ...).
