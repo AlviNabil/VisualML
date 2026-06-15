@@ -6,28 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		EA1C175C2FDC4B86005DE919 /* DataPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1C175B2FDC4B86005DE919 /* DataPoint.swift */; };
-		EA1C175F2FDC4C23005DE919 /* DatasetLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1C175E2FDC4C23005DE919 /* DatasetLoader.swift */; };
-		EA1C17612FDC4D20005DE919 /* PipelineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1C17602FDC4D20005DE919 /* PipelineViewModel.swift */; };
-		EA1C17632FDD0FB6005DE919 /* dataset.csv in Resources */ = {isa = PBXBuildFile; fileRef = EA1C17622FDD0FB6005DE919 /* dataset.csv */; };
-		EA1C17652FDD109B005DE919 /* NLPProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1C17642FDD109B005DE919 /* NLPProcessor.swift */; };
-		EA1C17672FDD122F005DE919 /* MatrixMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1C17662FDD122F005DE919 /* MatrixMath.swift */; };
-		EAF34CED2FDC3FF10040FD70 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF34CEC2FDC3FF10040FD70 /* ContentView.swift */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
-		EA1C175B2FDC4B86005DE919 /* DataPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPoint.swift; sourceTree = "<group>"; };
-		EA1C175E2FDC4C23005DE919 /* DatasetLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatasetLoader.swift; sourceTree = "<group>"; };
-		EA1C17602FDC4D20005DE919 /* PipelineViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipelineViewModel.swift; sourceTree = "<group>"; };
-		EA1C17622FDD0FB6005DE919 /* dataset.csv */ = {isa = PBXFileReference; lastKnownFileType = text; path = dataset.csv; sourceTree = "<group>"; };
-		EA1C17642FDD109B005DE919 /* NLPProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NLPProcessor.swift; sourceTree = "<group>"; };
-		EA1C17662FDD122F005DE919 /* MatrixMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatrixMath.swift; sourceTree = "<group>"; };
 		EAF34CE72FDC3FF10040FD70 /* VisualML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisualML.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		EAF34CEC2FDC3FF10040FD70 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		EAAAAA010000000000000001 /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		EAAAAA020000000000000002 /* Services */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EAAAAA030000000000000003 /* ViewModels */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EAAAAA040000000000000004 /* Views */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Views;
+			sourceTree = "<group>";
+		};
 		EAF34CE92FDC3FF10040FD70 /* VisualML */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = VisualML;
@@ -49,10 +52,10 @@
 		EAF34CDE2FDC3FF10040FD70 = {
 			isa = PBXGroup;
 			children = (
-				EAF34CF82FDC47F80040FD70 /* Services */,
-				EAF34CF72FDC47F30040FD70 /* Views */,
-				EAF34CF62FDC47EC0040FD70 /* ViewModels */,
-				EAF34CF52FDC47D90040FD70 /* Models */,
+				EAAAAA010000000000000001 /* Models */,
+				EAAAAA020000000000000002 /* Services */,
+				EAAAAA030000000000000003 /* ViewModels */,
+				EAAAAA040000000000000004 /* Views */,
 				EAF34CE92FDC3FF10040FD70 /* VisualML */,
 				EAF34CE82FDC3FF10040FD70 /* Products */,
 			);
@@ -64,41 +67,6 @@
 				EAF34CE72FDC3FF10040FD70 /* VisualML.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		EAF34CF52FDC47D90040FD70 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				EA1C175B2FDC4B86005DE919 /* DataPoint.swift */,
-				EA1C17622FDD0FB6005DE919 /* dataset.csv */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		EAF34CF62FDC47EC0040FD70 /* ViewModels */ = {
-			isa = PBXGroup;
-			children = (
-				EA1C17602FDC4D20005DE919 /* PipelineViewModel.swift */,
-			);
-			path = ViewModels;
-			sourceTree = "<group>";
-		};
-		EAF34CF72FDC47F30040FD70 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				EAF34CEC2FDC3FF10040FD70 /* ContentView.swift */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
-		EAF34CF82FDC47F80040FD70 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				EA1C175E2FDC4C23005DE919 /* DatasetLoader.swift */,
-				EA1C17642FDD109B005DE919 /* NLPProcessor.swift */,
-				EA1C17662FDD122F005DE919 /* MatrixMath.swift */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -117,6 +85,10 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				EAAAAA010000000000000001 /* Models */,
+				EAAAAA020000000000000002 /* Services */,
+				EAAAAA030000000000000003 /* ViewModels */,
+				EAAAAA040000000000000004 /* Views */,
 				EAF34CE92FDC3FF10040FD70 /* VisualML */,
 			);
 			name = VisualML;
@@ -165,7 +137,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EA1C17632FDD0FB6005DE919 /* dataset.csv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -176,12 +147,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EA1C17672FDD122F005DE919 /* MatrixMath.swift in Sources */,
-				EA1C175C2FDC4B86005DE919 /* DataPoint.swift in Sources */,
-				EAF34CED2FDC3FF10040FD70 /* ContentView.swift in Sources */,
-				EA1C175F2FDC4C23005DE919 /* DatasetLoader.swift in Sources */,
-				EA1C17612FDC4D20005DE919 /* PipelineViewModel.swift in Sources */,
-				EA1C17652FDD109B005DE919 /* NLPProcessor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
