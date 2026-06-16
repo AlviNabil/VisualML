@@ -103,7 +103,8 @@ struct ContentView: View {
                         .background(color(for: point.label).opacity(0.15))
                         .foregroundStyle(color(for: point.label))
                         .clipShape(Capsule())
-
+                        .frame(width: 70, alignment: .center)
+                        
                     Text(point.text)
                         .font(.subheadline)
                 }

@@ -2,27 +2,42 @@
 //  MatrixHeatmapView.swift
 //  VisualML
 //
-//  Renders the document-term matrix as a heatmap, plus the Bag-of-Words screen.
+//  Renders a document-term matrix (raw or weighted) as a heatmap, plus the
+//  Bag-of-Words / TF-IDF stage screen.
 //
 
 import SwiftUI
 
-/// Draws the document-term matrix as a grid of colored cells using `Canvas`.
+/// Draws a D × V matrix of real values as a grid of colored cells using `Canvas`.
 ///
-/// Why `Canvas`? The matrix can have ~120 × ~150 = 18,000 cells. Making 18,000
-/// SwiftUI views would be painfully slow. `Canvas` draws them all as one view,
-/// like painting on a single sheet — fast and smooth.
+/// Why `Canvas`? The matrix can have ~100 × ~120 ≈ 12,000 cells. Making that many
+/// SwiftUI views would be painfully slow. `Canvas` paints them all as ONE view.
 ///
+/// It draws plain arrays (`rows`, `labels`, `maxValue`) instead of a specific
+/// type, so the SAME view renders both raw counts and TF-IDF weights.
 /// - Rows = documents, grouped by class (so the block structure is obvious).
 /// - Columns = terms (alphabetical).
-/// - Cell color = the document's class; brightness = the word count in that cell.
+/// - Cell color = the document's class; brightness ∝ the cell's value.
 struct MatrixHeatmapView: View {
-    let matrix: DocTermMatrix
+    let rows: [[Double]]   // D × V values
+    let labels: [Int]      // class label per row
+    let maxValue: Double   // largest cell value, for brightness scaling
+
+    init(rows: [[Double]], labels: [Int], maxValue: Double) {
+        self.rows = rows
+        self.labels = labels
+        self.maxValue = max(maxValue, 0.0001)   // guard against divide-by-zero
+    }
+
+    /// Convenience: draw a weighted matrix directly.
+    init(weighted m: WeightedMatrix) {
+        self.init(rows: m.rows, labels: m.labels, maxValue: m.maxValue)
+    }
 
     /// Row display order: documents sorted by class label, so all of class 0
     /// sit together, then all of class 1. That makes the two blocks visible.
     private var rowOrder: [Int] {
-        matrix.labels.indices.sorted { matrix.labels[$0] < matrix.labels[$1] }
+        labels.indices.sorted { labels[$0] < labels[$1] }
     }
 
     private func color(forLabel label: Int) -> Color {
@@ -32,28 +47,24 @@ struct MatrixHeatmapView: View {
 
     var body: some View {
         Canvas { context, size in
-            let docCount = matrix.documentCount
-            let vocabCount = matrix.vocabularySize
-            guard docCount > 0, vocabCount > 0 else { return }
+            let docCount = rows.count
+            guard docCount > 0, let vocabCount = rows.first?.count, vocabCount > 0 else { return }
 
             let cellW = size.width / CGFloat(vocabCount)
             let cellH = size.height / CGFloat(docCount)
-            let maxC = max(matrix.maxCount, 1)
 
             var previousLabel: Int? = nil
             for (displayRow, docIndex) in rowOrder.enumerated() {
-                let label = matrix.labels[docIndex]
+                let label = labels[docIndex]
                 let base = color(forLabel: label)
-                let row = matrix.counts[docIndex]
+                let row = rows[docIndex]
                 let y = CGFloat(displayRow) * cellH
 
                 // Paint each non-zero cell. Empty cells stay transparent.
                 for t in 0..<vocabCount where row[t] > 0 {
-                    // Normalize the count onto the FULL actual range [1...maxC] so
-                    // the brightness gap between 1, 2, 3, 4 occurrences is as large
-                    // as possible. frac = 0 at count 1, frac = 1 at the max count.
-                    let frac = maxC > 1 ? (row[t] - 1) / (maxC - 1) : 1
-                    let intensity = 0.30 + 0.70 * frac   // 0.30 (count 1) ... 1.0 (max)
+                    // Brightness ∝ value relative to the largest cell. The 0.30
+                    // floor keeps the smallest non-zero cells visible; clamp at 1.
+                    let intensity = min(0.30 + 0.70 * (row[t] / maxValue), 1.0)
                     let rect = CGRect(x: CGFloat(t) * cellW, y: y,
                                       width: max(cellW, 0.5), height: max(cellH, 0.5))
                     context.fill(Path(rect), with: .color(base.opacity(intensity)))
@@ -72,7 +83,8 @@ struct MatrixHeatmapView: View {
     }
 }
 
-/// The Bag-of-Words stage screen: explanation + heatmap + most-frequent terms.
+/// The matrix stage screen: explanation, the Raw ⇄ TF-IDF toggle, the heatmap,
+/// and the most-influential terms (which reorder when you switch weighting).
 struct BagOfWordsView: View {
     // @ObservedObject: this view watches a VM that someone ELSE owns
     // (ContentView owns it via @StateObject). We just observe & react.
@@ -81,15 +93,16 @@ struct BagOfWordsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let matrix = viewModel.matrix {
-                    caption(matrix)
-                    MatrixHeatmapView(matrix: matrix)
+                if let weighted = viewModel.weightedMatrix {
+                    caption(weighted)
+                    controls
+                    MatrixHeatmapView(weighted: weighted)
                         .frame(height: 340)
                         .padding(8)
                         .background(Color.gray.opacity(0.10))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                    legend(matrix)
-                    topTerms(matrix)
+                    legend(weighted)
+                    topTerms(weighted)
                 } else {
                     ProgressView("Building matrix…")
                         .frame(maxWidth: .infinity, minHeight: 220)
@@ -109,23 +122,43 @@ struct BagOfWordsView: View {
         }
     }
 
+    // MARK: - Controls (the knobs)
+
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // A segmented control bound STRAIGHT to the config. Flipping it mutates
+            // config.weighting (a @Published value) → the VM publishes → this body
+            // re-runs → viewModel.weightedMatrix recomputes → the heatmap redraws.
+            Picker("Weighting", selection: $viewModel.config.weighting) {
+                ForEach(WeightingScheme.allCases) { scheme in
+                    Text(scheme.rawValue).tag(scheme)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("L2-normalize each document", isOn: $viewModel.config.l2normalize)
+                .font(.subheadline)
+        }
+    }
+
     // MARK: - Pieces
 
-    private func caption(_ matrix: DocTermMatrix) -> some View {
+    private func caption(_ m: WeightedMatrix) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Document-Term Matrix")
-                .font(.headline)
-            Text("\(matrix.documentCount) documents × \(matrix.vocabularySize) terms. "
-                 + "Each row is a document, each column a word; brighter = higher count. "
-                 + "Rows are grouped by class.")
+            Text("Document-Term Matrix").font(.headline)
+            Text("\(m.documentCount) documents × \(m.vocabularySize) terms. "
+                 + (viewModel.config.weighting == .tfidf
+                    ? "Cells are TF-IDF weights (count × idf): ubiquitous words dim, rare telling words brighten."
+                    : "Cells are raw counts; brighter = higher count.")
+                 + " Rows grouped by class.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private func legend(_ matrix: DocTermMatrix) -> some View {
+    private func legend(_ m: WeightedMatrix) -> some View {
         HStack(spacing: 16) {
-            ForEach(classLegend(matrix), id: \.label) { item in
+            ForEach(classLegend(m), id: \.label) { item in
                 HStack(spacing: 6) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color(forLabel: item.label))
@@ -136,18 +169,22 @@ struct BagOfWordsView: View {
         }
     }
 
-    /// The most frequent terms overall, shown as little chips.
-    private func topTerms(_ matrix: DocTermMatrix) -> some View {
-        let totals = matrix.termTotals
-        let ranked = Array(matrix.vocab.indices.sorted { totals[$0] > totals[$1] }.prefix(15))
+    /// The most influential terms, ranked by total weight (column sums). In raw
+    /// mode that's the most *frequent* words; in TF-IDF mode the list reorders to
+    /// the most *discriminative* words — the visible payoff of weighting.
+    private func topTerms(_ m: WeightedMatrix) -> some View {
+        let totals = m.termWeightTotals
+        let ranked = Array(m.vocab.indices.sorted { totals[$0] > totals[$1] }.prefix(15))
+        let isTFIDF = viewModel.config.weighting == .tfidf
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Most frequent terms").font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)],
+            Text(isTFIDF ? "Top terms by total TF-IDF weight" : "Most frequent terms")
+                .font(.headline)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
                       alignment: .leading, spacing: 8) {
                 ForEach(ranked, id: \.self) { i in
                     HStack(spacing: 4) {
-                        Text(matrix.vocab[i]).font(.caption).bold()
-                        Text("\(Int(totals[i]))")
+                        Text(m.vocab[i]).font(.caption).bold()
+                        Text(isTFIDF ? String(format: "%.1f", totals[i]) : "\(Int(totals[i]))")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -166,11 +203,25 @@ struct BagOfWordsView: View {
     }
 
     /// Distinct (name, label) pairs for the legend, sorted by label.
-    private func classLegend(_ matrix: DocTermMatrix) -> [(name: String, label: Int)] {
+    private func classLegend(_ m: WeightedMatrix) -> [(name: String, label: Int)] {
         var seen: [Int: String] = [:]
-        for (label, name) in zip(matrix.labels, matrix.categories) where seen[label] == nil {
+        for (label, name) in zip(m.labels, m.categories) where seen[label] == nil {
             seen[label] = name
         }
         return seen.map { (name: $0.value, label: $0.key) }.sorted { $0.label < $1.label }
     }
 }
+
+//#Preview {
+//    let previewViewModel = PipelineViewModel()
+//    
+//    return BagOfWordsView(viewModel: previewViewModel)
+//        // Attach an async task to run the moment the preview canvas renders
+//        .task {
+//            // 1. Load the real CSV data, exactly like ContentView does
+//            await previewViewModel.loadDataset()
+//            
+//            // 2. Force the matrix to build immediately after the data is ready
+//            await previewViewModel.buildBagOfWords()
+//        }
+//}

@@ -20,6 +20,21 @@ class PipelineViewModel: ObservableObject {
 
     private let loader = DatasetLoader()
     private let nlp = NLPProcessor()
+    private let weighting = Weighting()
+
+    /// The matrix after applying the current weighting + normalization knobs.
+    ///
+    /// This is a *computed* property, not stored: it re-derives from `matrix` and
+    /// `config` every time it's read. Because the View observes this VM, flipping
+    /// the weighting toggle changes `config` (a @Published value) → the View's
+    /// body re-runs → this recomputes → the heatmap redraws. That's the
+    /// "real-time" effect, with no manual refresh code.
+    var weightedMatrix: WeightedMatrix? {
+        guard let matrix else { return nil }
+        return weighting.weighted(matrix,
+                                  scheme: config.weighting,
+                                  l2normalize: config.l2normalize)
+    }
 
     func loadDataset() async{
         statusMessage = "Loading..."

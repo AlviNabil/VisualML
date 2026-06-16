@@ -17,6 +17,18 @@ struct PipelineConfig {
     var minDocFreq: Int = 2
     /// Keep at most this many terms (the most frequent ones win).
     var maxVocab: Int = 150
+
+    /// How matrix cells are valued: raw counts, or TF-IDF weights.
+    var weighting: WeightingScheme = .rawCounts
+    /// If true, scale each document row to unit length (so long docs don't dominate).
+    var l2normalize: Bool = false
+}
+
+/// The two ways we value a cell. `RawValue` is the label shown in the UI Picker.
+enum WeightingScheme: String, CaseIterable, Identifiable {
+    case rawCounts = "Raw counts"
+    case tfidf = "TF-IDF"
+    var id: String { rawValue }
 }
 
 /// The Bag-of-Words **document-term matrix**.
@@ -40,6 +52,33 @@ struct DocTermMatrix {
     var termTotals: [Double] {
         var totals = [Double](repeating: 0, count: vocab.count)
         for row in counts {
+            for t in row.indices { totals[t] += row[t] }
+        }
+        return totals
+    }
+}
+
+/// A *weighted* document-term matrix (e.g. TF-IDF). Same shape as
+/// `DocTermMatrix`, but cells are real-valued weights instead of integer counts.
+struct WeightedMatrix {
+    let vocab: [String]        // length V
+    let rows: [[Double]]       // D × V weights
+    let idf: [Double]          // length V — the idf used for each term (all 1 for raw)
+    let labels: [Int]          // length D
+    let categories: [String]   // length D
+
+    var documentCount: Int { rows.count }
+    var vocabularySize: Int { vocab.count }
+
+    /// The largest single weight — used to scale heatmap brightness.
+    var maxValue: Double { rows.flatMap { $0 }.max() ?? 1 }
+
+    /// Total weight of each term across all documents (column sums). In raw mode
+    /// this equals the count totals; in TF-IDF mode it ranks the most *influential*
+    /// terms, which is different — that's the whole point.
+    var termWeightTotals: [Double] {
+        var totals = [Double](repeating: 0, count: vocab.count)
+        for row in rows {
             for t in row.indices { totals[t] += row[t] }
         }
         return totals
