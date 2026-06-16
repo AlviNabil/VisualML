@@ -57,7 +57,7 @@ class DatasetLoader {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
-        print(lines[1])
+        //print(lines[1])
         
         // The first line is the header: it names the columns.
         guard let header = lines.first else { throw DatasetError.empty }

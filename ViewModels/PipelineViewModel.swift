@@ -24,7 +24,7 @@ class PipelineViewModel: ObservableObject {
     func loadDataset() async{
         statusMessage = "Loading..."
         do {
-            try? await Task.sleep(for: .seconds(5))
+            dataPoints.removeAll()
             // "dataset" matches dataset.csv in the app bundle.
             dataPoints = try loader.loadCSV(filename: "dataset")
 //            dump(dataPoints.prefix(10))
@@ -39,7 +39,8 @@ class PipelineViewModel: ObservableObject {
     /// Build the Bag-of-Words document-term matrix from the loaded documents,
     /// using the current `config`. Fast enough (D≈120) to run on the main actor;
     /// we'll move heavier stages (SVD) off the main thread later.
-    func buildBagOfWords() {
+    func buildBagOfWords() async {
+        try? await Task.sleep(for: .seconds(2))
         guard !dataPoints.isEmpty else { return }
         matrix = nlp.buildMatrix(from: dataPoints, config: config)
     }

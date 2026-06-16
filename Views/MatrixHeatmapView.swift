@@ -49,7 +49,11 @@ struct MatrixHeatmapView: View {
 
                 // Paint each non-zero cell. Empty cells stay transparent.
                 for t in 0..<vocabCount where row[t] > 0 {
-                    let intensity = 0.25 + 0.75 * (row[t] / maxC)   // 0.25...1.0
+                    // Normalize the count onto the FULL actual range [1...maxC] so
+                    // the brightness gap between 1, 2, 3, 4 occurrences is as large
+                    // as possible. frac = 0 at count 1, frac = 1 at the max count.
+                    let frac = maxC > 1 ? (row[t] - 1) / (maxC - 1) : 1
+                    let intensity = 0.30 + 0.70 * frac   // 0.30 (count 1) ... 1.0 (max)
                     let rect = CGRect(x: CGFloat(t) * cellW, y: y,
                                       width: max(cellW, 0.5), height: max(cellH, 0.5))
                     context.fill(Path(rect), with: .color(base.opacity(intensity)))
@@ -94,10 +98,14 @@ struct BagOfWordsView: View {
             .padding()
         }
         .navigationTitle("Bag of Words")
-        .navigationBarTitleDisplayMode(.inline)
+//        .navigationBarTitleDisplayMode(.inline)
         // Build it the first time we arrive (cheap; rebuilt later when knobs change).
         .onAppear {
-            if viewModel.matrix == nil { viewModel.buildBagOfWords() }
+            if viewModel.matrix == nil {
+                Task{
+                    await viewModel.buildBagOfWords()
+                }
+            }
         }
     }
 
