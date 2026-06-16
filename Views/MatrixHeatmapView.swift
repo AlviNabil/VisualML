@@ -52,6 +52,12 @@ struct MatrixHeatmapView: View {
 
             let cellW = size.width / CGFloat(vocabCount)
             let cellH = size.height / CGFloat(docCount)
+            // Leave a small vertical gap between rows so each document reads as
+            // its own band instead of one congested block. We shrink the drawn
+            // cell height and center it, leaving rowGap/2 of empty space above
+            // and below — the row pitch (cellH) is unchanged.
+            let rowGap = min(cellH * 0.4, 2.5)
+            let drawH = max(cellH - rowGap, 0.5)
 
             var previousLabel: Int? = nil
             for (displayRow, docIndex) in rowOrder.enumerated() {
@@ -65,8 +71,8 @@ struct MatrixHeatmapView: View {
                     // Brightness ∝ value relative to the largest cell. The 0.30
                     // floor keeps the smallest non-zero cells visible; clamp at 1.
                     let intensity = min(0.30 + 0.70 * (row[t] / maxValue), 1.0)
-                    let rect = CGRect(x: CGFloat(t) * cellW, y: y,
-                                      width: max(cellW, 0.5), height: max(cellH, 0.5))
+                    let rect = CGRect(x: CGFloat(t) * cellW, y: y + rowGap / 2,
+                                      width: max(cellW, 0.5), height: drawH)
                     context.fill(Path(rect), with: .color(base.opacity(intensity)))
                 }
 
@@ -97,7 +103,7 @@ struct BagOfWordsView: View {
                     caption(weighted)
                     controls
                     MatrixHeatmapView(weighted: weighted)
-                        .frame(height: 340)
+                        .frame(height: 440)
                         .padding(8)
                         .background(Color.gray.opacity(0.10))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
