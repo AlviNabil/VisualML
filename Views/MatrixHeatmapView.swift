@@ -133,7 +133,8 @@ struct BagOfWordsView: View {
         // A sheet is the iOS-standard container for this kind of help. Detents let
         // the user open it half-height and drag up for the full text.
         .sheet(isPresented: $showInfo) {
-            MatrixInfoSheet()
+            // Pass the real matrix so the sheet's worked example uses live numbers.
+            MatrixInfoSheet(matrix: viewModel.matrix)
                 .presentationDetents([.medium, .large])
         }
         // Build it the first time we arrive (cheap; rebuilt later when knobs change).
