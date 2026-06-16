@@ -96,6 +96,9 @@ struct BagOfWordsView: View {
     // (ContentView owns it via @StateObject). We just observe & react.
     @ObservedObject var viewModel: PipelineViewModel
 
+    // Drives the help sheet, opened from the ⓘ button.
+    @State private var showInfo = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -118,6 +121,21 @@ struct BagOfWordsView: View {
         }
         .navigationTitle("Bag of Words")
 //        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // ⓘ — the standard iOS spot for "what am I looking at?" documentation.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showInfo = true } label: {
+                    Image(systemName: "info.circle")
+                }
+                .accessibilityLabel("About this screen")
+            }
+        }
+        // A sheet is the iOS-standard container for this kind of help. Detents let
+        // the user open it half-height and drag up for the full text.
+        .sheet(isPresented: $showInfo) {
+            MatrixInfoSheet()
+                .presentationDetents([.medium, .large])
+        }
         // Build it the first time we arrive (cheap; rebuilt later when knobs change).
         .onAppear {
             if viewModel.matrix == nil {
@@ -185,19 +203,23 @@ struct BagOfWordsView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text(isTFIDF ? "Top terms by total TF-IDF weight" : "Most frequent terms")
                 .font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
-                      alignment: .leading, spacing: 8) {
+            // FlowLayout sizes each chip to its own word and wraps to the next
+            // line, so a long word like "everyone" is never split across lines.
+            FlowLayout(spacing: 8) {
                 ForEach(ranked, id: \.self) { i in
                     HStack(spacing: 4) {
                         Text(m.vocab[i]).font(.caption).bold()
                         Text(isTFIDF ? String(format: "%.1f", totals[i]) : "\(Int(totals[i]))")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    .lineLimit(1)
+                    .fixedSize()                 // take the word's full width; never wrap
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Color.gray.opacity(0.15))
                     .clipShape(Capsule())
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
