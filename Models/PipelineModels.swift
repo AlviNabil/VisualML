@@ -84,3 +84,18 @@ struct WeightedMatrix {
         return totals
     }
 }
+
+/// Result of Latent Semantic Analysis (truncated SVD).
+///
+/// LSA factorizes the weighted matrix W = U·Σ·Vᵀ and keeps the top components.
+/// `coords` are the document embeddings U·Σ — each document's position in the
+/// new low-dimensional "latent topic" space; for the scatter plot we use k = 2.
+struct SVDResult {
+    let coords: [[Double]]        // D × k  — document coordinates (rows of U·Σ)
+    let singularValues: [Double]  // length k — σ for the kept components
+    let spectrum: [Double]        // all singular values, descending (for the scree plot)
+    let labels: [Int]             // length D
+    let categories: [String]      // length D
+
+    var documentCount: Int { coords.count }
+}

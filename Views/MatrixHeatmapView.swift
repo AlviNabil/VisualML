@@ -112,6 +112,16 @@ struct BagOfWordsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     legend(weighted)
                     topTerms(weighted)
+
+                    // Move to the next pipeline stage: LSA (2-D projection).
+                    NavigationLink {
+                        LSAView(viewModel: viewModel)
+                    } label: {
+                        Label("View LSA projection", systemImage: "chart.dots.scatter")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 8)
                 } else {
                     ProgressView("Building matrix…")
                         .frame(maxWidth: .infinity, minHeight: 220)

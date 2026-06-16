@@ -21,6 +21,7 @@ class PipelineViewModel: ObservableObject {
     private let loader = DatasetLoader()
     private let nlp = NLPProcessor()
     private let weighting = Weighting()
+    private let math = MatrixMath()
 
     /// The matrix after applying the current weighting + normalization knobs.
     ///
@@ -34,6 +35,15 @@ class PipelineViewModel: ObservableObject {
         return weighting.weighted(matrix,
                                   scheme: config.weighting,
                                   l2normalize: config.l2normalize)
+    }
+
+    /// 2-D LSA projection of the current weighted matrix. Computed (not stored),
+    /// so it follows whatever weighting/normalization the user has chosen — the
+    /// downstream stage recomputes automatically. Small enough (D≈100) to run
+    /// inline; heavier datasets would move this off the main actor.
+    var lsaResult: SVDResult? {
+        guard let w = weightedMatrix else { return nil }
+        return math.performLSA(w, components: 2)
     }
 
     func loadDataset() async{
