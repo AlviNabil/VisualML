@@ -40,6 +40,8 @@ struct LSAInfoSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+            // Compute the other weighting's LSA only now (for the Raw-vs-TF-IDF table).
+            .task { await viewModel.computeComparison() }
         }
     }
 

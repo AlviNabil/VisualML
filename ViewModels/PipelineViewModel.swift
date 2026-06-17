@@ -61,12 +61,17 @@ class PipelineViewModel: ObservableObject {
     /// (the in-app comparison), off the main actor and cached. Called on appear.
     func computeLSA() async {
         guard let m = matrix else { return }
-        let active = config.weighting
-        let other: WeightingScheme = (active == .tfidf) ? .rawCounts : .tfidf
         isComputingLSA = true
-        lsaResult = await cachedLSA(active, m)
-        lsaComparison = await cachedLSA(other, m)
+        lsaResult = await cachedLSA(config.weighting, m)
         isComputingLSA = false
+    }
+
+    /// The OTHER weighting's LSA — computed lazily (only the ⓘ sheet's Raw-vs-TF-IDF
+    /// comparison needs it), so the LSA page isn't slowed by a 2nd eigendecomposition.
+    func computeComparison() async {
+        guard let m = matrix else { return }
+        let other: WeightingScheme = (config.weighting == .tfidf) ? .rawCounts : .tfidf
+        lsaComparison = await cachedLSA(other, m)
     }
 
     private func cachedLSA(_ scheme: WeightingScheme, _ m: DocTermMatrix) async -> SVDResult {

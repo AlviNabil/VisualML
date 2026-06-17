@@ -2,76 +2,113 @@
 //  MatrixMath.swift
 //  VisualML
 //
-//  The linear algebra for LSA. We factorize the (weighted) document-term matrix
-//  with SVD, keeping the top components — this is Latent Semantic Analysis.
+//  The linear algebra for LSA. We need only the top few components, so instead
+//  of a full eigendecomposition we use POWER ITERATION with deflation: repeatedly
+//  apply the Gram operator G·v = W·(Wᵀ·v) and renormalize; the vector converges
+//  to the largest eigenvector. After finding one we deflate it and repeat.
 //
-//  The symmetric eigendecomposition is a hand-written Jacobi solver (no LAPACK /
-//  Accelerate dependency, fully transparent). Performance notes:
-//    - Flat [Double] storage (i*n + j) avoids array-of-arrays overhead.
-//    - A RELATIVE convergence test stops after ~10 sweeps instead of always
-//      running the 100-sweep cap.
+//  The hot loops use a single flat row-major buffer + unsafe pointers (no D×D
+//  matrix is ever built, no bounds checks), so it stays fast at ~500 documents.
 //
 
 import Foundation
 
 struct MatrixMath {
 
-    /// Latent Semantic Analysis via the Gram matrix G = W·Wᵀ.
-    ///
-    /// W = U·Σ·Vᵀ ⇒ W·Wᵀ = U·Σ²·Uᵀ, so eigenvectors of the small D×D Gram matrix
-    /// are U and eigenvalues are σ². Document coordinates = rows of U·Σ; term
-    /// loadings (which words define a component) are V = Wᵀ·U·Σ⁻¹.
+    /// LSA of the weighted matrix W (D documents × V terms).
+    /// Eigenvectors of G = W·Wᵀ are the left singular vectors U; eigenvalues are σ².
+    /// Document coordinates = rows of U·Σ; term loadings = (Wᵀ·U)/σ.
     nonisolated func performLSA(_ w: WeightedMatrix, components k: Int = 2) -> SVDResult {
-        let docCount = w.rows.count          // (avoid the @MainActor computed props)
+        let docCount = w.rows.count
         let vocabCount = w.vocab.count
         guard docCount > 0, vocabCount > 0 else {
             return SVDResult(coords: [], singularValues: [], spectrum: [],
                              termLoadings: [], vocab: w.vocab,
                              labels: w.labels, categories: w.categories)
         }
+        let topN = min(max(k, 4), docCount)   // 2 for the plot + a couple for the scree
+        let kept = min(k, topN)
+        let flat = w.rows.flatMap { $0 }      // D×V, row-major contiguous
 
-        // 1. Gram matrix G = W·Wᵀ (D×D), stored flat.
-        var g = [Double](repeating: 0, count: docCount * docCount)
-        for i in 0..<docCount {
-            let ri = w.rows[i]
-            for j in i..<docCount {
-                let rj = w.rows[j]
-                var dot = 0.0
-                for t in 0..<vocabCount { dot += ri[t] * rj[t] }
-                g[i * docCount + j] = dot
-                g[j * docCount + i] = dot
-            }
-        }
-
-        // 2. Symmetric eigendecomposition (Jacobi).
-        let (eigenvalues, eigenvectors) = jacobiEigen(&g, docCount)
-
-        // 3. Order components by eigenvalue (largest first) + singular values.
-        let order = (0..<docCount).sorted { eigenvalues[$0] > eigenvalues[$1] }
-        let spectrum = order.map { sqrt(max(eigenvalues[$0], 0)) }
-
-        // 4. Document coordinates: coord[d][c] = U[d, col]·σ_c.
-        let kept = min(k, docCount)
-        var coords = [[Double]](repeating: [Double](repeating: 0, count: kept), count: docCount)
+        var spectrum = [Double]()
         var topSV = [Double](repeating: 0, count: kept)
-        for c in 0..<kept {
-            let col = order[c]
-            let sigma = sqrt(max(eigenvalues[col], 0))
-            topSV[c] = sigma
-            for d in 0..<docCount {
-                coords[d][c] = eigenvectors[d * docCount + col] * sigma
-            }
-        }
-
-        // 5. Term loadings: loading[t][c] = (Σ_d W[d][t]·U[d][col]) / σ_c.
+        var coords = [[Double]](repeating: [Double](repeating: 0, count: kept), count: docCount)
         var loadings = [[Double]](repeating: [Double](repeating: 0, count: kept), count: vocabCount)
-        for c in 0..<kept where topSV[c] > 0 {
-            let col = order[c]
-            let sigma = topSV[c]
-            for t in 0..<vocabCount {
-                var s = 0.0
-                for d in 0..<docCount { s += w.rows[d][t] * eigenvectors[d * docCount + col] }
-                loadings[t][c] = s / sigma
+
+        flat.withUnsafeBufferPointer { F in
+            var foundVals = [Double]()
+            var foundVecs = [[Double]]()
+
+            // u = Wᵀ·v  (length V).  W is `flat` (row-major), so column t of row d is F[d*V + t].
+            func wTransposeTimes(_ v: [Double]) -> [Double] {
+                var u = [Double](repeating: 0, count: vocabCount)
+                v.withUnsafeBufferPointer { vp in
+                    u.withUnsafeMutableBufferPointer { up in
+                        for d in 0..<docCount {
+                            let vd = vp[d]
+                            if vd != 0 {
+                                let base = d * vocabCount
+                                for t in 0..<vocabCount { up[t] += F[base + t] * vd }
+                            }
+                        }
+                    }
+                }
+                return u
+            }
+
+            // G·v = W·(Wᵀ·v), minus the deflated (already-found) directions.
+            func gramApply(_ v: [Double]) -> [Double] {
+                let u = wTransposeTimes(v)
+                var r = [Double](repeating: 0, count: docCount)
+                u.withUnsafeBufferPointer { up in
+                    r.withUnsafeMutableBufferPointer { rp in
+                        for d in 0..<docCount {
+                            let base = d * vocabCount
+                            var s = 0.0
+                            for t in 0..<vocabCount { s += F[base + t] * up[t] }
+                            rp[d] = s
+                        }
+                    }
+                }
+                for c in 0..<foundVals.count {
+                    let vec = foundVecs[c]
+                    var proj = 0.0
+                    for i in 0..<docCount { proj += vec[i] * v[i] }
+                    let scale = foundVals[c] * proj
+                    for i in 0..<docCount { r[i] -= scale * vec[i] }
+                }
+                return r
+            }
+
+            var rng = SeededRNG(seed: 0xA17EC)
+            for _ in 0..<topN {
+                var v = (0..<docCount).map { _ in Double(rng.next() % 2000) / 1000.0 - 1.0 }
+                normalize(&v)
+                var lambda = 0.0
+                for _ in 0..<150 {                          // top-2 converge in ~40
+                    let r = gramApply(v)
+                    var rayleigh = 0.0, normSq = 0.0
+                    for i in 0..<docCount { rayleigh += v[i] * r[i]; normSq += r[i] * r[i] }
+                    let norm = normSq.squareRoot()
+                    if norm < 1e-12 { lambda = max(rayleigh, 0); break }
+                    for i in 0..<docCount { v[i] = r[i] / norm }
+                    if abs(rayleigh - lambda) <= 1e-9 * abs(rayleigh) + 1e-12 { lambda = rayleigh; break }
+                    lambda = rayleigh
+                }
+                foundVals.append(max(lambda, 0))
+                foundVecs.append(v)
+            }
+
+            spectrum = foundVals.map { $0.squareRoot() }
+            for c in 0..<kept {
+                let sigma = foundVals[c].squareRoot()
+                topSV[c] = sigma
+                let vec = foundVecs[c]
+                for d in 0..<docCount { coords[d][c] = vec[d] * sigma }   // U·Σ
+                if sigma > 0 {
+                    let u = wTransposeTimes(vec)                          // Wᵀ·U_c
+                    for t in 0..<vocabCount { loadings[t][c] = u[t] / sigma }
+                }
             }
         }
 
@@ -80,63 +117,9 @@ struct MatrixMath {
                          labels: w.labels, categories: w.categories)
     }
 
-    /// Cyclic Jacobi eigenvalue algorithm for a symmetric matrix stored flat
-    /// (row-major, n×n). Returns (eigenvalues, eigenvectors) where eigenvector
-    /// `c` is column c: entry i is `vectors[i*n + c]`.
-    nonisolated private func jacobiEigen(_ a: inout [Double], _ n: Int) -> (values: [Double], vectors: [Double]) {
-        var v = [Double](repeating: 0, count: n * n)
-        for i in 0..<n { v[i * n + i] = 1 }
-
-        // Frobenius² is invariant under the rotations; use it to scale a RELATIVE
-        // stop test, so we don't spin for the full sweep cap.
-        var frob = 0.0
-        for x in a { frob += x * x }
-        let threshold = 1e-14 * max(frob, 1e-300)
-
-        for _ in 0..<100 {
-            var off = 0.0
-            for p in 0..<n {
-                let rp = p * n
-                for q in (p + 1)..<n { let x = a[rp + q]; off += x * x }
-            }
-            if off <= threshold { break }
-
-            for p in 0..<(n - 1) {
-                for q in (p + 1)..<n {
-                    let apq = a[p * n + q]
-                    if apq == 0 { continue }
-                    let app = a[p * n + p], aqq = a[q * n + q]
-                    let tau = (aqq - app) / (2 * apq)
-                    let t = (tau >= 0 ? 1.0 : -1.0) / (abs(tau) + (tau * tau + 1).squareRoot())
-                    let c = 1 / (t * t + 1).squareRoot()
-                    let s = t * c
-
-                    // A ← Jᵀ A J : rotate columns p,q then rows p,q.
-                    for i in 0..<n {
-                        let ip = i * n + p, iq = i * n + q
-                        let aip = a[ip], aiq = a[iq]
-                        a[ip] = c * aip - s * aiq
-                        a[iq] = s * aip + c * aiq
-                    }
-                    let rp = p * n, rq = q * n
-                    for i in 0..<n {
-                        let api = a[rp + i], aqi = a[rq + i]
-                        a[rp + i] = c * api - s * aqi
-                        a[rq + i] = s * api + c * aqi
-                    }
-                    // V ← V J : accumulate the rotation into the eigenvectors.
-                    for i in 0..<n {
-                        let ip = i * n + p, iq = i * n + q
-                        let vip = v[ip], viq = v[iq]
-                        v[ip] = c * vip - s * viq
-                        v[iq] = s * vip + c * viq
-                    }
-                }
-            }
-        }
-
-        var values = [Double](repeating: 0, count: n)
-        for i in 0..<n { values[i] = a[i * n + i] }
-        return (values, v)
+    private nonisolated func normalize(_ v: inout [Double]) {
+        var norm = (v.reduce(0) { $0 + $1 * $1 }).squareRoot()
+        if norm == 0 { v[0] = 1; norm = 1 }
+        for i in v.indices { v[i] /= norm }
     }
 }
