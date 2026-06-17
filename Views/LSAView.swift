@@ -66,12 +66,14 @@ struct ScatterPlotView: View {
 /// The LSA stage screen.
 struct LSAView: View {
     @ObservedObject var viewModel: PipelineViewModel
+    @State private var showInfo = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let lsa = viewModel.lsaResult, lsa.documentCount > 0 {
                     caption
+                    configChips                 // what config this page was opened with
                     ScatterPlotView(coords: lsa.coords, labels: lsa.labels)
                         .frame(height: 360)
                         .padding(8)
@@ -87,6 +89,17 @@ struct LSAView: View {
             .padding()
         }
         .navigationTitle("LSA (2-D)")
+        .toolbar {
+            // ⓘ — opens the math + a live worked example.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showInfo = true } label: { Image(systemName: "info.circle") }
+                    .accessibilityLabel("About LSA")
+            }
+        }
+        .sheet(isPresented: $showInfo) {
+            LSAInfoSheet(matrix: viewModel.matrix, config: viewModel.config)
+                .presentationDetents([.medium, .large])
+        }
     }
 
     // MARK: - Pieces
@@ -95,10 +108,28 @@ struct LSAView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Documents in latent space").font(.headline)
             Text("Each dot is a document, projected onto the top 2 SVD components of "
-                 + "the current matrix (\(viewModel.config.weighting.rawValue)). Nearby dots "
-                 + "are topically similar — the two classes should form separate clouds.")
+                 + "the matrix below. Nearby dots are topically similar — the two classes "
+                 + "should form separate clouds. Tap ⓘ for the math and a worked example.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// Chips showing the weighting + L2 state this page was navigated with.
+    private var configChips: some View {
+        HStack(spacing: 8) {
+            chip("Input: \(viewModel.config.weighting.rawValue)", .blue)
+            chip("L2: \(viewModel.config.l2normalize ? "on" : "off")",
+                 viewModel.config.l2normalize ? .green : .gray)
+        }
+    }
+
+    private func chip(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.caption2).bold()
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 
     private func legend(_ lsa: SVDResult) -> some View {
