@@ -119,8 +119,16 @@ struct ClassifierParams {
     var testFraction: Double = 0.25     // share of documents held out for testing
 }
 
+/// One frame of the training animation: the boundary (in LSA coords) at a given
+/// gradient-descent iteration, plus how accurate it was then.
+struct BoundaryStep {
+    let iteration: Int
+    let w0: Double, w1: Double, b: Double
+    let trainAccuracy: Double
+}
+
 /// The result of training: a line `w0·x + w1·y + b = 0` in LSA-coordinate space,
-/// plus how well it scored.
+/// plus how well it scored and the boundary's trajectory over training.
 struct TrainedModel {
     let kind: ClassifierKind
     let w0: Double, w1: Double, b: Double  // decision boundary (in LSA coords)
@@ -130,6 +138,7 @@ struct TrainedModel {
     let confusion: [[Int]]                 // 2×2 on the test set: confusion[actual][predicted]
     let class0: String, class1: String     // readable names for labels 0 and 1
     let testCount: Int
+    let history: [BoundaryStep]            // boundary at each recorded iteration (for playback)
 }
 
 /// The result of running one typed sentence through the whole pipeline.

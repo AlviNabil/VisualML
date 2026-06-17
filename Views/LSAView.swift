@@ -122,23 +122,6 @@ struct LSAView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     legend(lsa)
                     scree(lsa)
-
-                    // Next stage: train a classifier on these points.
-                    NavigationLink {
-                        ClassifierView(viewModel: viewModel)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "scribble.variable")
-                            Text("Train a classifier").fontWeight(.semibold)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
-                        }
-                        .padding(.vertical, 14).padding(.horizontal, 16)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
-                        .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
                 } else {
                     ProgressView("Computing LSA…")
                         .frame(maxWidth: .infinity, minHeight: 220)

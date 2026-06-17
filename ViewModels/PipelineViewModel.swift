@@ -158,8 +158,7 @@ class PipelineViewModel: ObservableObject {
     /// using the current `config`. Fast enough (D≈120) to run on the main actor;
     /// we'll move heavier stages (SVD) off the main thread later.
     func buildBagOfWords() async {
-        try? await Task.sleep(for: .seconds(2))
-        guard !dataPoints.isEmpty else { return }
+        guard !dataPoints.isEmpty, matrix == nil else { return }
         matrix = nlp.buildMatrix(from: dataPoints, config: config)
     }
 

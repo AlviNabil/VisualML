@@ -33,6 +33,24 @@ struct ClassifierView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     legend(lsa)
                     metrics(model)
+
+                    // Replay how this boundary was learned, iteration by iteration.
+                    NavigationLink {
+                        TrainingView(viewModel: viewModel)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "play.circle.fill")
+                            Text("Watch it train step-by-step").fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        }
+                        .padding(.vertical, 12).padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+
                     confusionView(model)
                     inputSection(prediction)
                 } else {
