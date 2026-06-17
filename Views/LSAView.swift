@@ -14,6 +14,10 @@ import SwiftUI
 struct ScatterPlotView: View {
     let coords: [[Double]]   // D × 2 (or more; we use the first two columns)
     let labels: [Int]
+    /// Optional decision boundary  w0·x + w1·y + b = 0  to overlay.
+    var boundary: (w0: Double, w1: Double, b: Double)? = nil
+    /// Also draw the z = ±1 margins (used for SVM).
+    var showMargins: Bool = false
 
     private func color(forLabel label: Int) -> Color {
         let palette: [Color] = [.blue, .orange, .green, .purple, .pink]
@@ -59,6 +63,30 @@ struct ScatterPlotView: View {
                 context.fill(Path(ellipseIn: rect),
                              with: .color(color(forLabel: labels[d]).opacity(0.85)))
             }
+
+            // Decision boundary  a0·x + a1·y + bb = 0  (and optional ±1 margins).
+            // Solve for whichever variable keeps the line well-defined, then map to screen.
+            func drawLine(_ a0: Double, _ a1: Double, _ bb: Double, dashed: Bool) {
+                var line = Path()
+                if abs(a1) >= abs(a0) {
+                    guard abs(a1) > 1e-12 else { return }
+                    line.move(to: CGPoint(x: sx(minX), y: sy(-(a0 * minX + bb) / a1)))
+                    line.addLine(to: CGPoint(x: sx(maxX), y: sy(-(a0 * maxX + bb) / a1)))
+                } else {
+                    line.move(to: CGPoint(x: sx(-(a1 * minY + bb) / a0), y: sy(minY)))
+                    line.addLine(to: CGPoint(x: sx(-(a1 * maxY + bb) / a0), y: sy(maxY)))
+                }
+                context.stroke(line, with: .color(dashed ? .gray : .primary),
+                               style: StrokeStyle(lineWidth: dashed ? 1 : 2,
+                                                  dash: dashed ? [5, 4] : []))
+            }
+            if let bd = boundary {
+                if showMargins {
+                    drawLine(bd.w0, bd.w1, bd.b - 1, dashed: true)
+                    drawLine(bd.w0, bd.w1, bd.b + 1, dashed: true)
+                }
+                drawLine(bd.w0, bd.w1, bd.b, dashed: false)
+            }
         }
     }
 }
@@ -81,6 +109,23 @@ struct LSAView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     legend(lsa)
                     scree(lsa)
+
+                    // Next stage: train a classifier on these points.
+                    NavigationLink {
+                        ClassifierView(viewModel: viewModel)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "scribble.variable")
+                            Text("Train a classifier").fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        }
+                        .padding(.vertical, 14).padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     ProgressView("Computing LSA…")
                         .frame(maxWidth: .infinity, minHeight: 220)

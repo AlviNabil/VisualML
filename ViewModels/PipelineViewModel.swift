@@ -22,6 +22,11 @@ class PipelineViewModel: ObservableObject {
     private let nlp = NLPProcessor()
     private let weighting = Weighting()
     private let math = MatrixMath()
+    private let classifier = Classifier()
+
+    /// Classifier hyperparameters (kind, η, iterations, λ). Changing any of these
+    /// retrains the model — see `trainedModel`.
+    @Published var classifierParams = ClassifierParams()
 
     /// The matrix after applying the current weighting + normalization knobs.
     ///
@@ -76,6 +81,15 @@ class PipelineViewModel: ObservableObject {
         }.value
         lsaCache[key] = result
         return result
+    }
+
+    /// The trained classifier, fit on the current LSA points with the current
+    /// params. Computed (cheap: 2-D, ~100 points), so dragging a knob retrains and
+    /// the boundary moves in real time — no manual refresh.
+    var trainedModel: TrainedModel? {
+        guard let lsa = lsaResult, lsa.documentCount > 0 else { return nil }
+        return classifier.train(coords: lsa.coords, labels: lsa.labels,
+                                categories: lsa.categories, params: classifierParams)
     }
 
     func loadDataset() async{

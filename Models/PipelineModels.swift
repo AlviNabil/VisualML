@@ -101,3 +101,33 @@ struct SVDResult {
 
     var documentCount: Int { coords.count }
 }
+
+/// Which linear classifier to train on the LSA points.
+enum ClassifierKind: String, CaseIterable, Identifiable {
+    case logistic = "Logistic"
+    case linear = "Linear"
+    case svm = "SVM"
+    var id: String { rawValue }
+}
+
+/// The classifier's hyperparameter knobs.
+struct ClassifierParams {
+    var kind: ClassifierKind = .logistic
+    var learningRate: Double = 0.30     // η — gradient-descent step size
+    var iterations: Double = 300        // epochs (Double for the Slider; used as Int)
+    var regularization: Double = 0.005  // λ — L2 penalty on the weights
+    var testFraction: Double = 0.25     // share of documents held out for testing
+}
+
+/// The result of training: a line `w0·x + w1·y + b = 0` in LSA-coordinate space,
+/// plus how well it scored.
+struct TrainedModel {
+    let kind: ClassifierKind
+    let w0: Double, w1: Double, b: Double  // decision boundary (in LSA coords)
+    let drawMargins: Bool                  // SVM also draws the z = ±1 margins
+    let trainAccuracy: Double
+    let testAccuracy: Double
+    let confusion: [[Int]]                 // 2×2 on the test set: confusion[actual][predicted]
+    let class0: String, class1: String     // readable names for labels 0 and 1
+    let testCount: Int
+}
