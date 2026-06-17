@@ -5,62 +5,52 @@
 //  The linear algebra for LSA. We factorize the (weighted) document-term matrix
 //  with SVD, keeping the top components — this is Latent Semantic Analysis.
 //
-//  We compute the symmetric eigendecomposition ourselves with the classic
-//  Jacobi rotation method instead of calling LAPACK. Reasons:
-//    1. Zero dependencies / no deprecated CLAPACK warnings.
-//    2. It's fully transparent — fitting for a glass-box teaching app.
-//  For our small Gram matrix (D ≈ 100) it runs in a few milliseconds.
+//  The symmetric eigendecomposition is a hand-written Jacobi solver (no LAPACK /
+//  Accelerate dependency, fully transparent). Performance notes:
+//    - Flat [Double] storage (i*n + j) avoids array-of-arrays overhead.
+//    - A RELATIVE convergence test stops after ~10 sweeps instead of always
+//      running the 100-sweep cap.
 //
 
 import Foundation
 
 struct MatrixMath {
 
-    /// Latent Semantic Analysis via the **Gram matrix**.
+    /// Latent Semantic Analysis via the Gram matrix G = W·Wᵀ.
     ///
-    /// The math (see the master plan §4.4): for W (D documents × V terms),
-    ///   W = U · Σ · Vᵀ              (SVD)
-    ///   W · Wᵀ = U · Σ² · Uᵀ        (so the eigenvectors of the D×D Gram matrix
-    ///                                are U, and the eigenvalues are σ²)
-    /// Because D (≈100) is far smaller than V, eigendecomposing the small D×D
-    /// Gram matrix is much cheaper than a full V×V SVD. The document coordinates
-    /// we plot are the rows of U·Σ.
-    ///
-    /// - Parameters:
-    ///   - w: the weighted matrix (raw counts or TF-IDF).
-    ///   - k: how many leading components to keep (2 for the scatter plot).
-    func performLSA(_ w: WeightedMatrix, components k: Int = 2) -> SVDResult {
-        let docCount = w.documentCount
-        let vocabCount = w.vocabularySize
+    /// W = U·Σ·Vᵀ ⇒ W·Wᵀ = U·Σ²·Uᵀ, so eigenvectors of the small D×D Gram matrix
+    /// are U and eigenvalues are σ². Document coordinates = rows of U·Σ; term
+    /// loadings (which words define a component) are V = Wᵀ·U·Σ⁻¹.
+    nonisolated func performLSA(_ w: WeightedMatrix, components k: Int = 2) -> SVDResult {
+        let docCount = w.rows.count          // (avoid the @MainActor computed props)
+        let vocabCount = w.vocab.count
         guard docCount > 0, vocabCount > 0 else {
             return SVDResult(coords: [], singularValues: [], spectrum: [],
+                             termLoadings: [], vocab: w.vocab,
                              labels: w.labels, categories: w.categories)
         }
 
-        // 1. Gram matrix G = W · Wᵀ  (D × D). G[i][j] = dot(document i, document j).
-        var g = [[Double]](repeating: [Double](repeating: 0, count: docCount), count: docCount)
+        // 1. Gram matrix G = W·Wᵀ (D×D), stored flat.
+        var g = [Double](repeating: 0, count: docCount * docCount)
         for i in 0..<docCount {
             let ri = w.rows[i]
             for j in i..<docCount {
                 let rj = w.rows[j]
                 var dot = 0.0
                 for t in 0..<vocabCount { dot += ri[t] * rj[t] }
-                g[i][j] = dot
-                g[j][i] = dot          // symmetric
+                g[i * docCount + j] = dot
+                g[j * docCount + i] = dot
             }
         }
 
-        // 2. Symmetric eigendecomposition  G = V · Λ · Vᵀ  (Jacobi rotations).
-        let (eigenvalues, eigenvectors) = jacobiEigen(g)
+        // 2. Symmetric eigendecomposition (Jacobi).
+        let (eigenvalues, eigenvectors) = jacobiEigen(&g, docCount)
 
-        // 3. Order components by eigenvalue, largest first.
-        let order = eigenvalues.indices.sorted { eigenvalues[$0] > eigenvalues[$1] }
-
-        // Singular values σ_i = √(max(λ_i, 0)); full spectrum for the scree plot.
+        // 3. Order components by eigenvalue (largest first) + singular values.
+        let order = (0..<docCount).sorted { eigenvalues[$0] > eigenvalues[$1] }
         let spectrum = order.map { sqrt(max(eigenvalues[$0], 0)) }
 
-        // 4. Document coordinates = rows of U·Σ:  coord[d][c] = U[d, c] · σ_c,
-        //    where U[d, c] is entry d of the c-th eigenvector (a column of V).
+        // 4. Document coordinates: coord[d][c] = U[d, col]·σ_c.
         let kept = min(k, docCount)
         var coords = [[Double]](repeating: [Double](repeating: 0, count: kept), count: docCount)
         var topSV = [Double](repeating: 0, count: kept)
@@ -69,68 +59,84 @@ struct MatrixMath {
             let sigma = sqrt(max(eigenvalues[col], 0))
             topSV[c] = sigma
             for d in 0..<docCount {
-                coords[d][c] = eigenvectors[d][col] * sigma
+                coords[d][c] = eigenvectors[d * docCount + col] * sigma
+            }
+        }
+
+        // 5. Term loadings: loading[t][c] = (Σ_d W[d][t]·U[d][col]) / σ_c.
+        var loadings = [[Double]](repeating: [Double](repeating: 0, count: kept), count: vocabCount)
+        for c in 0..<kept where topSV[c] > 0 {
+            let col = order[c]
+            let sigma = topSV[c]
+            for t in 0..<vocabCount {
+                var s = 0.0
+                for d in 0..<docCount { s += w.rows[d][t] * eigenvectors[d * docCount + col] }
+                loadings[t][c] = s / sigma
             }
         }
 
         return SVDResult(coords: coords, singularValues: topSV, spectrum: spectrum,
+                         termLoadings: loadings, vocab: w.vocab,
                          labels: w.labels, categories: w.categories)
     }
 
-    /// Classic cyclic **Jacobi eigenvalue algorithm** for a symmetric matrix.
-    ///
-    /// It repeatedly applies 2×2 rotations Jᵀ·A·J that zero one off-diagonal
-    /// entry at a time. Each rotation keeps A symmetric and nudges it toward a
-    /// diagonal matrix; the accumulated rotations V become the eigenvectors and
-    /// the final diagonal holds the eigenvalues.
-    ///
-    /// - Returns: (eigenvalues, eigenvectors) where `eigenvectors[i][k]` is the
-    ///   i-th component of the k-th eigenvector (eigenvectors are columns).
-    private func jacobiEigen(_ matrix: [[Double]]) -> (values: [Double], vectors: [[Double]]) {
-        let n = matrix.count
-        var a = matrix
-        // Start with V = identity; it accumulates every rotation.
-        var v = (0..<n).map { i in (0..<n).map { j in i == j ? 1.0 : 0.0 } }
+    /// Cyclic Jacobi eigenvalue algorithm for a symmetric matrix stored flat
+    /// (row-major, n×n). Returns (eigenvalues, eigenvectors) where eigenvector
+    /// `c` is column c: entry i is `vectors[i*n + c]`.
+    nonisolated private func jacobiEigen(_ a: inout [Double], _ n: Int) -> (values: [Double], vectors: [Double]) {
+        var v = [Double](repeating: 0, count: n * n)
+        for i in 0..<n { v[i * n + i] = 1 }
 
-        for _ in 0..<100 {                      // sweeps (plenty for n ≈ 100)
-            // Stop once the off-diagonal mass is negligible.
+        // Frobenius² is invariant under the rotations; use it to scale a RELATIVE
+        // stop test, so we don't spin for the full sweep cap.
+        var frob = 0.0
+        for x in a { frob += x * x }
+        let threshold = 1e-14 * max(frob, 1e-300)
+
+        for _ in 0..<100 {
             var off = 0.0
-            for p in 0..<n { for q in (p + 1)..<n { off += a[p][q] * a[p][q] } }
-            if off < 1e-18 { break }
+            for p in 0..<n {
+                let rp = p * n
+                for q in (p + 1)..<n { let x = a[rp + q]; off += x * x }
+            }
+            if off <= threshold { break }
 
             for p in 0..<(n - 1) {
                 for q in (p + 1)..<n {
-                    let apq = a[p][q]
+                    let apq = a[p * n + q]
                     if apq == 0 { continue }
-
-                    // Rotation angle that zeros a[p][q] (smaller-angle solution).
-                    let tau = (a[q][q] - a[p][p]) / (2 * apq)
+                    let app = a[p * n + p], aqq = a[q * n + q]
+                    let tau = (aqq - app) / (2 * apq)
                     let t = (tau >= 0 ? 1.0 : -1.0) / (abs(tau) + (tau * tau + 1).squareRoot())
                     let c = 1 / (t * t + 1).squareRoot()
                     let s = t * c
 
-                    // A ← Jᵀ A J : rotate columns p,q, then rows p,q.
+                    // A ← Jᵀ A J : rotate columns p,q then rows p,q.
                     for i in 0..<n {
-                        let aip = a[i][p], aiq = a[i][q]
-                        a[i][p] = c * aip - s * aiq
-                        a[i][q] = s * aip + c * aiq
+                        let ip = i * n + p, iq = i * n + q
+                        let aip = a[ip], aiq = a[iq]
+                        a[ip] = c * aip - s * aiq
+                        a[iq] = s * aip + c * aiq
                     }
+                    let rp = p * n, rq = q * n
                     for i in 0..<n {
-                        let api = a[p][i], aqi = a[q][i]
-                        a[p][i] = c * api - s * aqi
-                        a[q][i] = s * api + c * aqi
+                        let api = a[rp + i], aqi = a[rq + i]
+                        a[rp + i] = c * api - s * aqi
+                        a[rq + i] = s * api + c * aqi
                     }
                     // V ← V J : accumulate the rotation into the eigenvectors.
                     for i in 0..<n {
-                        let vip = v[i][p], viq = v[i][q]
-                        v[i][p] = c * vip - s * viq
-                        v[i][q] = s * vip + c * viq
+                        let ip = i * n + p, iq = i * n + q
+                        let vip = v[ip], viq = v[iq]
+                        v[ip] = c * vip - s * viq
+                        v[iq] = s * vip + c * viq
                     }
                 }
             }
         }
 
-        let values = (0..<n).map { a[$0][$0] }
+        var values = [Double](repeating: 0, count: n)
+        for i in 0..<n { values[i] = a[i * n + i] }
         return (values, v)
     }
 }

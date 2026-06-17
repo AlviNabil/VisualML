@@ -117,10 +117,19 @@ struct BagOfWordsView: View {
                     NavigationLink {
                         LSAView(viewModel: viewModel)
                     } label: {
-                        Label("View LSA projection", systemImage: "chart.dots.scatter")
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 10) {
+                            Image(systemName: "chart.dots.scatter")
+                            Text("View LSA projection").fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        }
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(.white)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.plain)
                     .padding(.top, 8)
                 } else {
                     ProgressView("Building matrix…")

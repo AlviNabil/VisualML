@@ -2,109 +2,165 @@
 //  LSAInfoSheet.swift
 //  VisualML
 //
-//  "About LSA" help sheet: what LSA does, how each point's coordinates are
-//  computed, a live worked example from the real data, which component carries
-//  the class signal, and how Raw vs TF-IDF changes the plot.
+//  "About LSA" help sheet. Reads the already-computed (cached) LSA results from
+//  the view model — it does NOT run any LSA itself, so it opens instantly.
 //
 
 import SwiftUI
-import Foundation
 
 struct LSAInfoSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: PipelineViewModel
 
-    /// The current matrix + config, so the worked example uses live numbers.
-    var matrix: DocTermMatrix?
-    var config: PipelineConfig
-
-    // Computed once on appear (each example runs two LSAs — don't redo per frame).
-    @State private var example: LSAExample?
+    private var active: SVDResult? { viewModel.lsaResult }
+    private var config: PipelineConfig { viewModel.config }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("What LSA does") {
-                    entry("Latent Semantic Analysis = truncated SVD",
-                          "It factorizes the document-term matrix into a few latent "
-                          + "components — directions in word-space along which documents "
-                          + "vary the most. Each component is a weighted blend of many "
-                          + "words (a 'topic'), not a single word.")
-                    entry("Why",
-                          "It compresses each document from a V-dimensional word vector "
-                          + "(here V ≈ \(matrix?.vocabularySize ?? 0)) down to just 2 "
-                          + "numbers, keeping the structure that matters: co-occurring "
-                          + "words merge, noise drops, similar documents end up near each other.")
-                    entry("It's unsupervised",
-                          "LSA never sees the class labels. Any clustering is the geometry "
-                          + "of the words themselves — the colors are added afterwards, only to check.")
+                whatSection
+                howSection
+
+                if let r = active, r.documentCount > 0, r.singularValues.count >= 2 {
+                    workedSection(r)
+                    documentTableSection(r)
+                    dominantWordsSection(r)
+                    separationSection(r)
+                    if let other = viewModel.lsaComparison {
+                        rawVsTfidfSection(active: r, other: other)
+                    }
+                } else {
+                    Section { ProgressView("Computing…").frame(maxWidth: .infinity) }
                 }
 
-                Section("How each point is computed") {
-                    entry("1 · Gram matrix",
-                          "G = W · Wᵀ   (a D×D matrix). Entry G[i][j] is the dot product of "
-                          + "documents i and j — how much word-mass they share.")
-                    entry("2 · Eigendecomposition",
-                          "G = U · Λ · Uᵀ. The eigenvectors U are the latent directions; the "
-                          + "eigenvalues λ say how dominant each is. Singular values σᵢ = √λᵢ.")
-                    entry("3 · Coordinates",
-                          "A document d's position on component c is\n\n"
-                          + "    coord(d, c) = U[d, c] · σ_c\n\n"
-                          + "For the 2-D plot we keep components 1 and 2:\n"
-                          + "    (x, y) = ( U[d,1]·σ₁ ,  U[d,2]·σ₂ ).")
-                }
-
-                if let ex = example {
-                    workedSection(ex)
-                    separationSection(ex)
-                    rawVsTfidfSection(ex)
-                }
-
-                Section("What the plot represents") {
-                    entry("Each dot = one document", "All \(matrix?.documentCount ?? 0) "
-                          + "documents are placed by their latent coordinates.")
-                    entry("The axes = the top 2 components",
-                          "Horizontal = component 1 (strongest variation), vertical = "
-                          + "component 2. Each axis is a blend of words, not a single word.")
-                    entry("Distance = similarity",
-                          "Documents with a similar word-mix sit close together, so the two "
-                          + "topics drift into separate clouds — without ever being told the labels.")
-                    entry("The scree bars",
-                          "Below the plot, the bars are σ₁, σ₂, … — how much each component "
-                          + "captures. Tall leading bars mean 2-D is enough to see the structure.")
-                }
+                plotSection
             }
             .navigationTitle("About LSA")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .onAppear {
-                if example == nil, let m = matrix {
-                    example = LSAExample(matrix: m, config: config)
-                }
-            }
+        }
+    }
+
+    // MARK: - Static explanation
+
+    private var whatSection: some View {
+        Section("What LSA does") {
+            entry("Latent Semantic Analysis = truncated SVD",
+                  "It factorizes the document-term matrix into a few latent components — "
+                  + "directions in word-space along which documents vary the most. Each "
+                  + "component is a weighted blend of many words (a 'topic'), not one word.")
+            entry("Why",
+                  "It compresses each document from a V-dimensional word vector (here "
+                  + "V ≈ \(viewModel.matrix?.vocabularySize ?? 0)) down to just 2 numbers, "
+                  + "keeping the structure that matters: co-occurring words merge, noise drops.")
+            entry("It's unsupervised",
+                  "LSA never sees the class labels. Any clustering is the geometry of the "
+                  + "words themselves — colors are added afterwards, only to check.")
+        }
+    }
+
+    private var howSection: some View {
+        Section("How each point is computed") {
+            entry("1 · Gram matrix",
+                  "G = W · Wᵀ (D×D). G[i][j] is the dot product of documents i and j — "
+                  + "how much word-mass they share.")
+            entry("2 · Eigendecomposition",
+                  "G = U · Λ · Uᵀ. Eigenvectors U are the latent directions; eigenvalues λ "
+                  + "say how dominant each is. Singular values σᵢ = √λᵢ.")
+            entry("3 · Coordinates",
+                  "coord(d, c) = U[d, c] · σ_c.   For the 2-D plot we keep components 1 & 2:\n"
+                  + "(x, y) = ( U[d,1]·σ₁ ,  U[d,2]·σ₂ ).")
+        }
+    }
+
+    private var plotSection: some View {
+        Section("What the plot represents") {
+            entry("Each dot = one document", "All \(active?.documentCount ?? 0) documents, placed by their latent coordinates.")
+            entry("The axes = the top 2 components",
+                  "Horizontal = component 1 (strongest variation), vertical = component 2. "
+                  + "Each axis is a blend of words (see the dominant-words table).")
+            entry("Distance = similarity",
+                  "Documents with a similar word-mix sit close, so the two topics drift into "
+                  + "separate clouds — without ever being told the labels.")
         }
     }
 
     // MARK: - Live sections
 
-    private func workedSection(_ ex: LSAExample) -> some View {
-        Section("Worked example (live)") {
-            Text("Document #\(ex.docNumber) (\(ex.category.capitalized)) · input: \(ex.scheme), L2 \(ex.l2 ? "on" : "off").")
+    private func workedSection(_ r: SVDResult) -> some View {
+        let s1 = r.singularValues[0], s2 = r.singularValues[1]
+        let x = r.coords[0][0], y = r.coords[0][1]
+        return Section("Worked example (live)") {
+            Text("Document #1 (\(r.categories[0].capitalized)) · input: \(config.weighting.rawValue), L2 \(config.l2normalize ? "on" : "off").")
                 .font(.caption).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 4) {
-                mono("σ₁ = \(f(ex.sigma1))    σ₂ = \(f(ex.sigma2))")
-                mono("x = U[1,1]·σ₁ = \(f4(ex.u1)) · \(f(ex.sigma1)) = \(f(ex.x))")
-                mono("y = U[1,2]·σ₂ = \(f4(ex.u2)) · \(f(ex.sigma2)) = \(f(ex.y))")
-                Text("→ document #\(ex.docNumber) is plotted at (\(f(ex.x)), \(f(ex.y))).")
-                    .font(.caption).bold()
+                mono("σ₁ = \(f(s1))    σ₂ = \(f(s2))")
+                mono("x = U[1,1]·σ₁ = \(f4(s1 != 0 ? x/s1 : 0)) · \(f(s1)) = \(f(x))")
+                mono("y = U[1,2]·σ₂ = \(f4(s2 != 0 ? y/s2 : 0)) · \(f(s2)) = \(f(y))")
+                Text("→ document #1 is plotted at (\(f(x)), \(f(y))).").font(.caption).bold()
             }
             .padding(.vertical, 2)
         }
     }
 
-    private func separationSection(_ ex: LSAExample) -> some View {
-        Section("Which axis separates the classes (live)") {
+    private func documentTableSection(_ r: SVDResult) -> some View {
+        Section("Document coordinates — first 10 (live)") {
+            Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 6) {
+                GridRow {
+                    Text("doc").gridColumnAlignment(.leading)
+                    Text("class").gridColumnAlignment(.leading)
+                    Text("comp 1"); Text("comp 2")
+                }
+                .font(.caption2).bold().foregroundStyle(.secondary)
+                ForEach(0..<min(10, r.documentCount), id: \.self) { d in
+                    GridRow {
+                        Text("#\(d + 1)").gridColumnAlignment(.leading)
+                        Text(r.categories[d].capitalized).gridColumnAlignment(.leading)
+                        Text(f(r.coords[d][0])); Text(f(r.coords[d][1]))
+                    }
+                    .font(.caption2)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func dominantWordsSection(_ r: SVDResult) -> some View {
+        Section("Dominant words per component — top 10 (live)") {
+            Text("The words with the largest loading on each axis. The sign shows which side "
+                 + "of the axis they pull toward (e.g. one class vs the other on component 2).")
+                .font(.caption).foregroundStyle(.secondary)
+            componentWords("Component 1 (x)", r, 0)
+            componentWords("Component 2 (y)", r, 1)
+        }
+    }
+
+    private func componentWords(_ title: String, _ r: SVDResult, _ comp: Int) -> some View {
+        let ranked = r.vocab.indices
+            .sorted { abs(r.termLoadings[$0][comp]) > abs(r.termLoadings[$1][comp]) }
+            .prefix(10)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).bold()
+            Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 4) {
+                ForEach(Array(ranked), id: \.self) { t in
+                    GridRow {
+                        Text(r.vocab[t]).gridColumnAlignment(.leading)
+                        Text(f(r.termLoadings[t][comp]))
+                    }
+                    .font(.caption2)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func separationSection(_ r: SVDResult) -> some View {
+        let n0 = className(r, 0), n1 = className(r, 1)
+        let g1 = abs(classMean(r, 0, 0) - classMean(r, 0, 1))
+        let g2 = abs(classMean(r, 1, 0) - classMean(r, 1, 1))
+        return Section("Which axis separates the classes (live)") {
             Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 6) {
                 GridRow {
                     Text("class mean").gridColumnAlignment(.leading)
@@ -112,46 +168,64 @@ struct LSAInfoSheet: View {
                 }
                 .font(.caption2).bold().foregroundStyle(.secondary)
                 GridRow {
-                    Text(ex.class0Name.capitalized).gridColumnAlignment(.leading)
-                    Text(f(ex.mean0c1)); Text(f(ex.mean0c2))
+                    Text(n0.capitalized).gridColumnAlignment(.leading)
+                    Text(f(classMean(r, 0, 0))); Text(f(classMean(r, 1, 0)))
                 }.font(.caption2)
                 GridRow {
-                    Text(ex.class1Name.capitalized).gridColumnAlignment(.leading)
-                    Text(f(ex.mean1c1)); Text(f(ex.mean1c2))
+                    Text(n1.capitalized).gridColumnAlignment(.leading)
+                    Text(f(classMean(r, 0, 1))); Text(f(classMean(r, 1, 1)))
                 }.font(.caption2)
                 GridRow {
                     Text("gap").gridColumnAlignment(.leading).bold()
-                    Text(f(ex.gap1)).bold(); Text(f(ex.gap2)).bold()
+                    Text(f(g1)).bold(); Text(f(g2)).bold()
                 }.font(.caption2)
             }
             .padding(.vertical, 2)
-            Text("Component 1 captures the variation both classes SHARE (common filler "
-                 + "words) — tiny gap. Component 2 captures the topic — the big gap, so the "
-                 + "clouds separate \(ex.gap2 >= ex.gap1 ? "vertically" : "horizontally").")
+            Text("Component 1 captures the variation both classes SHARE (filler words) — "
+                 + "tiny gap. Component 2 captures the topic — the big gap, so the clouds "
+                 + "separate \(g2 >= g1 ? "vertically" : "horizontally").")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func rawVsTfidfSection(_ ex: LSAExample) -> some View {
-        Section("Raw vs TF-IDF (live)") {
+    private func rawVsTfidfSection(active r: SVDResult, other: SVDResult) -> some View {
+        let raw = config.weighting == .rawCounts ? r : other
+        let tf = config.weighting == .tfidf ? r : other
+        return Section("Raw vs TF-IDF (live)") {
             Grid(alignment: .trailing, horizontalSpacing: 14, verticalSpacing: 6) {
                 GridRow {
                     Text("input matrix").gridColumnAlignment(.leading)
                     Text("class separation")
                 }
                 .font(.caption2).bold().foregroundStyle(.secondary)
-                GridRow { Text("Raw counts").gridColumnAlignment(.leading); Text(f(ex.rawBestGap)) }.font(.caption2)
-                GridRow { Text("TF-IDF").gridColumnAlignment(.leading); Text(f(ex.tfidfBestGap)) }.font(.caption2)
+                GridRow { Text("Raw counts").gridColumnAlignment(.leading); Text(f(bestGap(raw))) }.font(.caption2)
+                GridRow { Text("TF-IDF").gridColumnAlignment(.leading); Text(f(bestGap(tf))) }.font(.caption2)
             }
             .padding(.vertical, 2)
-            Text("Same documents, different cell values → different Gram matrix → "
-                 + "different plot. TF-IDF dims the filler words every document shares, so "
-                 + "the latent axes line up with topic and the clouds pull further apart.")
+            Text("Same documents, different cell values → different Gram matrix → different "
+                 + "plot. TF-IDF dims the filler words every document shares, so the latent "
+                 + "axes line up with topic and the clouds pull further apart.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Math helpers
+
+    private func classMean(_ r: SVDResult, _ comp: Int, _ label: Int) -> Double {
+        var sum = 0.0, n = 0
+        for i in r.labels.indices where r.labels[i] == label { sum += r.coords[i][comp]; n += 1 }
+        return n > 0 ? sum / Double(n) : 0
+    }
+    private func bestGap(_ r: SVDResult) -> Double {
+        max(abs(classMean(r, 0, 0) - classMean(r, 0, 1)),
+            abs(classMean(r, 1, 0) - classMean(r, 1, 1)))
+    }
+    private func className(_ r: SVDResult, _ label: Int) -> String {
+        for i in r.labels.indices where r.labels[i] == label { return r.categories[i] }
+        return "class \(label)"
+    }
+
+    // MARK: - View helpers
 
     private func entry(_ title: String, _ body: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -163,72 +237,4 @@ struct LSAInfoSheet: View {
     private func mono(_ s: String) -> some View { Text(s).font(.caption2.monospaced()) }
     private func f(_ v: Double) -> String { String(format: "%.2f", v) }
     private func f4(_ v: Double) -> String { String(format: "%.4f", v) }
-}
-
-/// Computes a real LSA worked example from a `DocTermMatrix`: it runs LSA under
-/// both Raw and TF-IDF weighting (mirroring `Weighting` + `MatrixMath`) and pulls
-/// out document #1's coordinates and the class-separation along each component.
-struct LSAExample {
-    let docNumber: Int
-    let category: String
-    let scheme: String
-    let l2: Bool
-    let sigma1: Double, sigma2: Double
-    let x: Double, y: Double
-    let u1: Double, u2: Double             // recovered eigenvector entries = coord / σ
-    let mean0c1: Double, mean1c1: Double   // class means on component 1
-    let mean0c2: Double, mean1c2: Double   // class means on component 2
-    let rawBestGap: Double, tfidfBestGap: Double
-    let class0Name: String, class1Name: String
-
-    var gap1: Double { abs(mean0c1 - mean1c1) }
-    var gap2: Double { abs(mean0c2 - mean1c2) }
-
-    init?(matrix m: DocTermMatrix, config: PipelineConfig) {
-        guard m.documentCount > 1, m.vocabularySize > 0 else { return nil }
-        let weighting = Weighting()
-        let mathEngine = MatrixMath()
-        let rawLSA = mathEngine.performLSA(
-            weighting.weighted(m, scheme: .rawCounts, l2normalize: config.l2normalize), components: 2)
-        let tfLSA = mathEngine.performLSA(
-            weighting.weighted(m, scheme: .tfidf, l2normalize: config.l2normalize), components: 2)
-        guard (rawLSA.coords.first?.count ?? 0) >= 2,
-              (tfLSA.coords.first?.count ?? 0) >= 2 else { return nil }
-
-        let active = (config.weighting == .tfidf) ? tfLSA : rawLSA
-
-        // Mean of a class's coordinate on one component.
-        func classMean(_ r: SVDResult, _ comp: Int, _ label: Int) -> Double {
-            var sum = 0.0, n = 0
-            for i in r.labels.indices where r.labels[i] == label { sum += r.coords[i][comp]; n += 1 }
-            return n > 0 ? sum / Double(n) : 0
-        }
-        // The larger class-mean gap across the two components = "separating power".
-        func bestGap(_ r: SVDResult) -> Double {
-            max(abs(classMean(r, 0, 0) - classMean(r, 0, 1)),
-                abs(classMean(r, 1, 0) - classMean(r, 1, 1)))
-        }
-
-        let d = 0
-        let s1 = active.singularValues[0], s2 = active.singularValues[1]
-        let xx = active.coords[d][0], yy = active.coords[d][1]
-
-        self.docNumber = d + 1
-        self.category = m.categories[d]
-        self.scheme = config.weighting.rawValue
-        self.l2 = config.l2normalize
-        self.sigma1 = s1; self.sigma2 = s2
-        self.x = xx; self.y = yy
-        self.u1 = s1 != 0 ? xx / s1 : 0
-        self.u2 = s2 != 0 ? yy / s2 : 0
-        self.mean0c1 = classMean(active, 0, 0); self.mean1c1 = classMean(active, 0, 1)
-        self.mean0c2 = classMean(active, 1, 0); self.mean1c2 = classMean(active, 1, 1)
-        self.rawBestGap = bestGap(rawLSA)
-        self.tfidfBestGap = bestGap(tfLSA)
-
-        // Human-readable class names by label index.
-        var names = ["class 0", "class 1"]
-        for i in m.labels.indices { let l = m.labels[i]; if l == 0 || l == 1 { names[l] = m.categories[i] } }
-        self.class0Name = names[0]; self.class1Name = names[1]
-    }
 }

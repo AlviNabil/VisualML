@@ -97,9 +97,11 @@ struct LSAView: View {
             }
         }
         .sheet(isPresented: $showInfo) {
-            LSAInfoSheet(matrix: viewModel.matrix, config: viewModel.config)
+            LSAInfoSheet(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
         }
+        // Compute LSA off the main actor when the screen appears (cached after).
+        .task { await viewModel.computeLSA() }
     }
 
     // MARK: - Pieces

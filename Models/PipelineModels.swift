@@ -94,6 +94,8 @@ struct SVDResult {
     let coords: [[Double]]        // D × k  — document coordinates (rows of U·Σ)
     let singularValues: [Double]  // length k — σ for the kept components
     let spectrum: [Double]        // all singular values, descending (for the scree plot)
+    let termLoadings: [[Double]]  // V × k  — how strongly each term loads on each component
+    let vocab: [String]           // length V — column labels (for the dominant-words table)
     let labels: [Int]             // length D
     let categories: [String]      // length D
 

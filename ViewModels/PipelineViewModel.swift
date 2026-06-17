@@ -37,13 +37,45 @@ class PipelineViewModel: ObservableObject {
                                   l2normalize: config.l2normalize)
     }
 
-    /// 2-D LSA projection of the current weighted matrix. Computed (not stored),
-    /// so it follows whatever weighting/normalization the user has chosen — the
-    /// downstream stage recomputes automatically. Small enough (D≈100) to run
-    /// inline; heavier datasets would move this off the main actor.
-    var lsaResult: SVDResult? {
-        guard let w = weightedMatrix else { return nil }
-        return math.performLSA(w, components: 2)
+    /// LSA of the ACTIVE weighting (drives the LSA page). Stored + cached, and
+    /// computed OFF the main actor by `computeLSA()`, so the UI never blocks.
+    @Published private(set) var lsaResult: SVDResult?
+    /// LSA of the OTHER weighting — used only for the in-app Raw-vs-TF-IDF comparison.
+    @Published private(set) var lsaComparison: SVDResult?
+    @Published private(set) var isComputingLSA = false
+
+    private var lsaCache: [String: SVDResult] = [:]
+
+    /// A cache key capturing everything that changes an LSA result.
+    private func lsaKey(_ scheme: WeightingScheme) -> String {
+        "\(scheme.rawValue)|l2:\(config.l2normalize)|sw:\(config.removeStopwords)"
+        + "|mdf:\(config.minDocFreq)|mv:\(config.maxVocab)|n:\(dataPoints.count)"
+    }
+
+    /// Compute LSA for the active weighting (the page) and the other weighting
+    /// (the in-app comparison), off the main actor and cached. Called on appear.
+    func computeLSA() async {
+        guard let m = matrix else { return }
+        let active = config.weighting
+        let other: WeightingScheme = (active == .tfidf) ? .rawCounts : .tfidf
+        isComputingLSA = true
+        lsaResult = await cachedLSA(active, m)
+        lsaComparison = await cachedLSA(other, m)
+        isComputingLSA = false
+    }
+
+    private func cachedLSA(_ scheme: WeightingScheme, _ m: DocTermMatrix) async -> SVDResult {
+        let key = lsaKey(scheme)
+        if let hit = lsaCache[key] { return hit }   // already computed → instant
+        let w = weighting.weighted(m, scheme: scheme, l2normalize: config.l2normalize)
+        let engine = math
+        // `Task.detached` runs the heavy eigendecomposition on a background thread;
+        // `.value` hops the result back to the main actor.
+        let result = await Task.detached(priority: .userInitiated) {
+            engine.performLSA(w, components: 2)
+        }.value
+        lsaCache[key] = result
+        return result
     }
 
     func loadDataset() async{
