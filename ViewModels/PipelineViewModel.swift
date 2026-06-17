@@ -92,6 +92,48 @@ class PipelineViewModel: ObservableObject {
                                 categories: lsa.categories, params: classifierParams)
     }
 
+    /// Run a typed sentence through the ENTIRE pipeline and predict its class:
+    /// tokenize → count over the trained vocabulary → weight (idf, L2) exactly as
+    /// in training → project onto the latent components → apply the boundary.
+    func classify(_ text: String) -> Prediction? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let m = matrix, let lsa = lsaResult,
+              let model = trainedModel, let wm = weightedMatrix else { return nil }
+
+        // 1. Raw counts over the SAME vocabulary the model was trained on.
+        let colOf = Dictionary(uniqueKeysWithValues: m.vocab.enumerated().map { ($1, $0) })
+        var vec = [Double](repeating: 0, count: m.vocab.count)
+        var matched = 0
+        for token in nlp.tokenize(trimmed) {
+            if let c = colOf[token] { vec[c] += 1; matched += 1 }
+        }
+
+        // 2. Weight it just like training: TF-IDF uses the trained idf, then L2.
+        if config.weighting == .tfidf { for t in vec.indices { vec[t] *= wm.idf[t] } }
+        if config.l2normalize {
+            let norm = (vec.reduce(0) { $0 + $1 * $1 }).squareRoot()
+            if norm > 0 { for t in vec.indices { vec[t] /= norm } }
+        }
+
+        // 3. Project onto the latent components:  coord_c = Σ_t vec[t] · V[t][c]
+        //    (V = the term loadings; this is exactly W·V used for training docs).
+        var x = 0.0, y = 0.0
+        for t in 0..<m.vocab.count {
+            x += vec[t] * lsa.termLoadings[t][0]
+            y += vec[t] * lsa.termLoadings[t][1]
+        }
+
+        // 4. Apply the trained boundary (z ≥ 0 → class 1, for all three kinds).
+        let z = model.w0 * x + model.w1 * y + model.b
+        let label = z >= 0 ? 1 : 0
+        let name = label == 1 ? model.class1 : model.class0
+        let prob: Double? = (model.kind == .logistic)
+            ? (label == 1 ? 1 / (1 + exp(-z)) : 1 - 1 / (1 + exp(-z)))
+            : nil
+        return Prediction(category: name, label: label, score: z,
+                          probability: prob, x: x, y: y, matchedWords: matched)
+    }
+
     func loadDataset() async{
         statusMessage = "Loading..."
         do {

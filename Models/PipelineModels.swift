@@ -131,3 +131,13 @@ struct TrainedModel {
     let class0: String, class1: String     // readable names for labels 0 and 1
     let testCount: Int
 }
+
+/// The result of running one typed sentence through the whole pipeline.
+struct Prediction {
+    let category: String       // predicted class name
+    let label: Int             // predicted label (0/1) — for coloring
+    let score: Double          // z = wᵀx + b
+    let probability: Double?    // logistic only (P of the predicted class)
+    let x: Double, y: Double   // where the sentence lands in LSA space
+    let matchedWords: Int      // how many of its words were in the vocabulary
+}

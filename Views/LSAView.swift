@@ -18,6 +18,8 @@ struct ScatterPlotView: View {
     var boundary: (w0: Double, w1: Double, b: Double)? = nil
     /// Also draw the z = ±1 margins (used for SVM).
     var showMargins: Bool = false
+    /// Optional extra point to spotlight (a typed sentence's position).
+    var highlight: (x: Double, y: Double, label: Int)? = nil
 
     private func color(forLabel label: Int) -> Color {
         let palette: [Color] = [.blue, .orange, .green, .purple, .pink]
@@ -29,8 +31,10 @@ struct ScatterPlotView: View {
             guard !coords.isEmpty, coords[0].count >= 2 else { return }
 
             // Bounds of the data, so we can map it into the view rectangle.
-            let xs = coords.map { $0[0] }
-            let ys = coords.map { $0[1] }
+            // Include the highlight point so a typed sentence is never off-screen.
+            var xs = coords.map { $0[0] }
+            var ys = coords.map { $0[1] }
+            if let h = highlight { xs.append(h.x); ys.append(h.y) }
             let minX = xs.min()!, maxX = xs.max()!
             let minY = ys.min()!, maxY = ys.max()!
             let pad: CGFloat = 18
@@ -86,6 +90,15 @@ struct ScatterPlotView: View {
                     drawLine(bd.w0, bd.w1, bd.b + 1, dashed: true)
                 }
                 drawLine(bd.w0, bd.w1, bd.b, dashed: false)
+            }
+
+            // Spotlight a typed sentence: a filled dot (predicted color) + ring.
+            if let h = highlight {
+                let p = CGPoint(x: sx(h.x), y: sy(h.y))
+                context.fill(Path(ellipseIn: CGRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12)),
+                             with: .color(color(forLabel: h.label)))
+                context.stroke(Path(ellipseIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18)),
+                               with: .color(.primary), lineWidth: 2.5)
             }
         }
     }

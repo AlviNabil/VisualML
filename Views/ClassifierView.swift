@@ -10,16 +10,23 @@ import SwiftUI
 
 struct ClassifierView: View {
     @ObservedObject var viewModel: PipelineViewModel
+    @State private var inputText = ""
 
     var body: some View {
-        ScrollView {
+        // Run the typed sentence through the pipeline; only spotlight it if it
+        // actually matched some vocabulary words.
+        let prediction = viewModel.classify(inputText)
+        let mark = (prediction?.matchedWords ?? 0) > 0 ? prediction : nil
+
+        return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let lsa = viewModel.lsaResult, let model = viewModel.trainedModel {
                     caption(model)
                     knobs
                     ScatterPlotView(coords: lsa.coords, labels: lsa.labels,
                                     boundary: (model.w0, model.w1, model.b),
-                                    showMargins: model.drawMargins)
+                                    showMargins: model.drawMargins,
+                                    highlight: mark.map { ($0.x, $0.y, $0.label) })
                         .frame(height: 320)
                         .padding(8)
                         .background(Color.gray.opacity(0.10))
@@ -27,6 +34,7 @@ struct ClassifierView: View {
                     legend(lsa)
                     metrics(model)
                     confusionView(model)
+                    inputSection(prediction)
                 } else {
                     ProgressView("Training…")
                         .frame(maxWidth: .infinity, minHeight: 220)
@@ -37,6 +45,43 @@ struct ClassifierView: View {
         .navigationTitle("Classifier")
         // LSA must be ready before we can train; cached so this is instant.
         .task { await viewModel.computeLSA() }
+    }
+
+    // MARK: - Live input
+
+    private func inputSection(_ pred: Prediction?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Classify your own sentence").font(.headline)
+            TextField("Type a sport or business sentence…", text: $inputText, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
+                .autocorrectionDisabled()
+
+            if let p = pred, p.matchedWords > 0 {
+                HStack(spacing: 10) {
+                    Text("Predicted:").font(.caption).foregroundStyle(.secondary)
+                    Text(p.category.capitalized)
+                        .font(.subheadline).bold()
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(color(forLabel: p.label).opacity(0.18))
+                        .foregroundStyle(color(forLabel: p.label))
+                        .clipShape(Capsule())
+                    if let prob = p.probability {
+                        Text(String(format: "%.0f%% confident", prob * 100))
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text(String(format: "score %.2f", p.score))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Text("Matched \(p.matchedWords) known word\(p.matchedWords == 1 ? "" : "s"); it's the ringed dot above.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            } else if !inputText.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("None of those words are in the vocabulary — try words from the dataset "
+                     + "(goal, win, tackle, report, merger, profit…).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Caption
