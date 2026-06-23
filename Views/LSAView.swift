@@ -41,17 +41,20 @@ struct ScatterPlotView: View {
             let plotW = size.width - 2 * pad
             let plotH = size.height - 2 * pad
 
-            // Map a data value to a screen coordinate.
-            func sx(_ v: Double) -> CGFloat {
-                let range = maxX - minX
-                let t = range > 0 ? (v - minX) / range : 0.5
-                return pad + CGFloat(t) * plotW
-            }
-            func sy(_ v: Double) -> CGFloat {
-                let range = maxY - minY
-                let t = range > 0 ? (v - minY) / range : 0.5
-                return pad + (1 - CGFloat(t)) * plotH   // flip: data up = screen up
-            }
+            // EQUAL-ASPECT (isotropic) mapping: both axes share ONE scale, so the
+            // plot shows the embedding's true geometry. Scaling each axis
+            // independently to fill the box (the naive approach) would magnify a
+            // low-variance axis into fake "scatter" — exactly what L2-normalization's
+            // collapsed length-axis would look like — so we deliberately avoid it.
+            let rangeX = max(maxX - minX, 1e-9)
+            let rangeY = max(maxY - minY, 1e-9)
+            let centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2
+            let scale = min(plotW / rangeX, plotH / rangeY) * 0.95   // one scale for x & y
+            let midX = pad + plotW / 2, midY = pad + plotH / 2
+
+            // Map a data value to a screen coordinate (y flipped: data up = screen up).
+            func sx(_ v: Double) -> CGFloat { midX + CGFloat((v - centerX) * scale) }
+            func sy(_ v: Double) -> CGFloat { midY - CGFloat((v - centerY) * scale) }
 
             // Faint center axes (where each latent component = 0).
             var axes = Path()

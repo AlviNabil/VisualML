@@ -14,7 +14,7 @@ struct Weighting {
 
     /// Apply the chosen scheme (and optional L2 normalization).
     ///
-    /// The math (see DOCS/00 §4.3):
+    /// The math:
     ///   df(t)   = number of documents containing term t
     ///   idf(t)  = ln( (1 + D) / (1 + df(t)) ) + 1        // smoothed, never 0
     ///   W[d,t]  = count(d,t) · idf(t)                     // tf · idf
