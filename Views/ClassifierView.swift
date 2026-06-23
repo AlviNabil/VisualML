@@ -70,7 +70,7 @@ struct ClassifierView: View {
     private func inputSection(_ pred: Prediction?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Classify your own sentence").font(.headline)
-            TextField("Type a sport or business sentence…", text: $inputText, axis: .vertical)
+            TextField("e.g. the team won the final match", text: $inputText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...3)
                 .autocorrectionDisabled()
@@ -96,7 +96,7 @@ struct ClassifierView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             } else if !inputText.trimmingCharacters(in: .whitespaces).isEmpty {
                 Text("None of those words are in the vocabulary — try words from the dataset "
-                     + "(goal, win, tackle, report, merger, profit…).")
+                     + "(team, match, goal, season, league · company, profit, market, deal, bank).")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
