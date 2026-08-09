@@ -3,6 +3,9 @@
 .AppleDouble
 .LSOverride
 
+# ---- VSCode ----
+.vscode/
+
 # ---- Xcode: per-user state (never share these) ----
 xcuserdata/
 *.xcuserstate
