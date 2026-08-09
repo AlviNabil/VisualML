@@ -50,6 +50,7 @@ struct RegressionPlaneView: View {
     @State private var pitch: Double = 0.35
     @State private var dragStart: CGSize = .zero
     @State private var showPlane = true
+    @State private var showInfo = false
 
     private let timer = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
 
@@ -66,6 +67,19 @@ struct RegressionPlaneView: View {
         }
         .navigationTitle("Multiple Regression")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showInfo = true } label: { Image(systemName: "info.circle") }
+                    .accessibilityLabel("The maths behind this fit")
+                    .disabled(export == nil)
+            }
+        }
+        .sheet(isPresented: $showInfo) {
+            if let export {
+                RegressionInfoSheet(export: export)
+                    .presentationDetents([.large])
+            }
+        }
         .task {
             do { export = try RegressionExport.load("linear_regression_multi") }
             catch { loadError = error.localizedDescription }
@@ -85,7 +99,10 @@ struct RegressionPlaneView: View {
                 equations(export, step)
                 learningRatePicker(export)
                 playback(run: run, step: step, last: last)
+                GradientStepExplainer(export: export, frame: step,
+                                      learningRate: run.learningRate)
                 comparison(export, step)
+                dataTableLink(export)
             }
             .padding()
         }
@@ -223,6 +240,25 @@ struct RegressionPlaneView: View {
                         + "from more information.", export.closedForm.r2))
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private func dataTableLink(_ export: RegressionExport) -> some View {
+        NavigationLink {
+            RegressionDataTableView(export: export, solution: export.closedForm)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "tablecells")
+                Text("Browse the data").fontWeight(.semibold)
+                Spacer()
+                Text("\(export.dataset.n) rows").font(.caption)
+                Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+            }
+            .padding(.vertical, 12).padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
     }
 
     private func card(_ title: String, _ value: String) -> some View {

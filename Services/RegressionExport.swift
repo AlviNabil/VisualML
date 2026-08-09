@@ -59,6 +59,58 @@ struct RegressionBaseline: Codable {
     let mse: Double
 }
 
+/// The MSE surface written as a quadratic form in the parameters.
+///
+///     J(theta) = theta·G·theta − 2·theta·c + s
+///     grad J   = 2·(G·theta − c)
+///
+/// `gram` is XᵀX/n, `xty` is Xᵀy/n and `yty` is yᵀy/n, all computed in Python.
+/// Because they summarise the whole training set, the loss and its slope can be
+/// evaluated at any parameters without touching the rows again.
+struct LossQuadratic: Codable {
+    let gram: [[Double]]
+    let xty: [Double]
+    let yty: Double
+
+    /// The training MSE at the given parameters.
+    func loss(_ theta: [Double]) -> Double {
+        var quadratic = 0.0
+        for i in theta.indices {
+            quadratic += theta[i] * rowDotTheta(i, theta)
+        }
+        let linear = zip(theta, xty).reduce(0) { $0 + $1.0 * $1.1 }
+        return quadratic - 2 * linear + yty
+    }
+
+    /// The gradient of the training MSE at the given parameters.
+    func gradient(_ theta: [Double]) -> [Double] {
+        theta.indices.map { 2 * (rowDotTheta($0, theta) - xty[$0]) }
+    }
+
+    /// The value of one parameter that minimises the loss with the others held
+    /// fixed — the bottom of the slice the parabola view draws.
+    func coordinateMinimum(_ index: Int, _ theta: [Double]) -> Double {
+        let curvature = gram[index][index]
+        guard abs(curvature) > 1e-12 else { return theta[index] }
+        var others = 0.0
+        for j in theta.indices where j != index { others += gram[index][j] * theta[j] }
+        return (xty[index] - others) / curvature
+    }
+
+    /// Replaces one entry of `theta` — used to sweep a single axis of the loss.
+    func loss(_ theta: [Double], varying index: Int, to value: Double) -> Double {
+        var copy = theta
+        copy[index] = value
+        return loss(copy)
+    }
+
+    private func rowDotTheta(_ i: Int, _ theta: [Double]) -> Double {
+        var sum = 0.0
+        for j in theta.indices { sum += gram[i][j] * theta[j] }
+        return sum
+    }
+}
+
 /// One recorded step of gradient descent.
 struct RegressionFrame: Codable {
     let iter: Int
@@ -108,6 +160,7 @@ struct RegressionExport: Codable {
     let dataset: RegressionDataset
     let closedForm: RegressionSolution
     let baseline: RegressionBaseline
+    let lossQuadratic: LossQuadratic
     let residuals: [Double]
     let runs: [RegressionRun]
 

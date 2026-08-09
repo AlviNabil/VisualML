@@ -17,6 +17,7 @@ struct LinearRegressionView: View {
     @State private var frame: Double = 0
     @State private var playing = false
     @State private var showResiduals = false
+    @State private var showInfo = false
 
     private let timer = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
 
@@ -33,6 +34,19 @@ struct LinearRegressionView: View {
         }
         .navigationTitle("Linear Regression")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showInfo = true } label: { Image(systemName: "info.circle") }
+                    .accessibilityLabel("The maths behind this fit")
+                    .disabled(export == nil)
+            }
+        }
+        .sheet(isPresented: $showInfo) {
+            if let export {
+                RegressionInfoSheet(export: export)
+                    .presentationDetents([.large])
+            }
+        }
         .task {
             do { export = try RegressionExport.load("linear_regression") }
             catch { loadError = error.localizedDescription }
@@ -65,7 +79,10 @@ struct LinearRegressionView: View {
                 learningRatePicker(export)
                 playback(run: run, step: step, last: lastFrame)
                 lossCurve(run: run, export: export, current: step)
+                GradientStepExplainer(export: export, frame: step,
+                                      learningRate: run.learningRate)
                 metrics(export, step)
+                dataTableLink(export)
             }
             .padding()
         }
@@ -208,6 +225,25 @@ struct LinearRegressionView: View {
                         export.baseline.prediction, beaten, export.closedForm.mse))
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private func dataTableLink(_ export: RegressionExport) -> some View {
+        NavigationLink {
+            RegressionDataTableView(export: export, solution: export.closedForm)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "tablecells")
+                Text("Browse the data").fontWeight(.semibold)
+                Spacer()
+                Text("\(export.dataset.n) rows").font(.caption)
+                Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+            }
+            .padding(.vertical, 12).padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
     }
 
     private func metricCard(_ title: String, _ value: String) -> some View {
