@@ -27,6 +27,13 @@ struct HomeView: View {
 
                 Section("Regression") {
                     NavigationLink {
+                        LinearRegressionView()
+                    } label: {
+                        row("Linear Regression",
+                            "One feature: fit a line, closed form vs gradient descent",
+                            "chart.line.uptrend.xyaxis", .green)
+                    }
+                    NavigationLink {
                         ClassifierView(viewModel: viewModel)
                     } label: {
                         row("Bag-of-Words + Regression",

@@ -26,3 +26,8 @@ DerivedData/
 Pods/
 Carthage/Build/
 
+# ---- Python ----
+.venv/
+
+__pycache__/
+*.pyc
