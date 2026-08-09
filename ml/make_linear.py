@@ -24,8 +24,9 @@ import os
 import numpy as np
 
 from common import (SEED, TEST_SIZE, design_matrix, fit_linear_closed_form,
-                    fit_linear_gd, load_dataset, mse, predict, r_squared,
-                    rmse, select_frames, split, stability_limit, write_json)
+                    fit_linear_gd, load_dataset, loss_quadratic, mse, predict,
+                    r_squared, rmse, select_frames, split, stability_limit,
+                    write_json)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -155,6 +156,9 @@ def build(source_csv: str, features: list[str], target: str, output_json: str,
             "prediction": round(mean_prediction, 6),
             "mse": round(mse(y_train, np.full_like(y_train, mean_prediction)), 6),
         },
+        # Statistics that let the app evaluate the loss surface and its slope
+        # at any theta, for the gradient-descent explainer.
+        "lossQuadratic": loss_quadratic(X_train, y_train),
         "residuals": residuals,
         "runs": runs,
     }

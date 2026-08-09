@@ -135,6 +135,29 @@ def fit_linear_closed_form(X: np.ndarray, y: np.ndarray) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def loss_quadratic(X: np.ndarray, y: np.ndarray) -> dict:
+    """Return the statistics that reproduce the whole MSE surface.
+
+    Expanding the loss gives a quadratic form in theta:
+
+        J(theta) = (1/n) ||X theta - y||^2
+                 = theta^T G theta - 2 theta^T c + s
+
+        G = X^T X / n ,  c = X^T y / n ,  s = y^T y / n
+
+    and its gradient is  grad J = 2 (G theta - c).
+
+    G, c and s depend only on the data, so these few numbers are enough to
+    evaluate the loss and its slope at any theta without revisiting the rows.
+    """
+    n = X.shape[0]
+    return {
+        "gram": [[round(float(v), 8) for v in row] for row in (X.T @ X / n)],
+        "xty": [round(float(v), 8) for v in (X.T @ y / n)],
+        "yty": round(float(y @ y / n), 8),
+    }
+
+
 def stability_limit(X: np.ndarray) -> float:
     """Return the learning rate at which batch gradient descent starts to diverge.
 
