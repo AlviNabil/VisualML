@@ -34,6 +34,13 @@ struct HomeView: View {
                             "chart.line.uptrend.xyaxis", .green)
                     }
                     NavigationLink {
+                        RegressionPlaneView()
+                    } label: {
+                        row("Multiple Linear Regression",
+                            "Two features: an interactive hyperplane",
+                            "cube.transparent", .purple)
+                    }
+                    NavigationLink {
                         ClassifierView(viewModel: viewModel)
                     } label: {
                         row("Bag-of-Words + Regression",

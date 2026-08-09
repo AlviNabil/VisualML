@@ -3,11 +3,12 @@ Generate the study-habit dataset used by the linear regression stage.
 
 Requires Python 3.10+.
 
-    study_score.csv   hours -> score   (continuous 0..100)
+    study_score.csv        hours         -> score   (continuous 0..100)
+    study_score_multi.csv  hours, sleep  -> score   (continuous 0..100)
 
-The simulated cohort has a second driver, sleep, which shapes the score but is
-not written out here: a single-feature model can only see hours, so part of the
-variation it cannot explain is really sleep.
+The score column is identical in both files, so the single-feature model and
+the two-feature model predict the same target from different amounts of
+information.
 
 The generative process:
   1. hours ~ Beta(2.2, 2.4) rescaled to [0.5, 12].
@@ -61,17 +62,25 @@ def generate() -> pd.DataFrame:
 
 
 def main() -> None:
-    """Generate the cohort and write the CSV into ml/data."""
+    """Generate the cohort and write the CSVs into ml/data."""
     os.makedirs(DATA_DIR, exist_ok=True)
     df = generate()
 
-    print("Generating study-habit dataset...")
+    print("Generating study-habit datasets...")
     df[["hours_studied", "exam_score"]].to_csv(
         os.path.join(DATA_DIR, "study_score.csv"), index=False)
-    print(f"  wrote data/study_score.csv  ({len(df)} rows)")
+    df[["hours_studied", "sleep_hours", "exam_score"]].to_csv(
+        os.path.join(DATA_DIR, "study_score_multi.csv"), index=False)
+    print(f"  wrote data/study_score.csv        ({len(df)} rows)")
+    print(f"  wrote data/study_score_multi.csv  ({len(df)} rows)")
 
     print("\nSummary")
-    print(df[["hours_studied", "exam_score"]].describe().round(2).to_string())
+    print(df[["hours_studied", "sleep_hours", "exam_score"]]
+          .describe().round(2).to_string())
+
+    corr = df[["hours_studied", "sleep_hours", "exam_score"]].corr().round(3)
+    print("\nCorrelations")
+    print(corr.to_string())
 
 
 if __name__ == "__main__":

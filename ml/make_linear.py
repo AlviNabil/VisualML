@@ -4,7 +4,10 @@ SwiftUI app.
 
 Requires Python 3.10+.
 
-The model is fit two ways:
+Two models are built from the same cohort and the same target column:
+
+    linear_regression.json        score ~ hours                 (a line)
+    linear_regression_multi.json  score ~ hours + sleep         (a plane)
 
     solver 1  closed form      -- the normal equations, exact, one step
     solver 2  gradient descent -- iterative, swept across several learning rates
@@ -159,7 +162,7 @@ def build(source_csv: str, features: list[str], target: str, output_json: str,
 
 
 def main() -> None:
-    """Build the single-feature export."""
+    """Build the single-feature and two-feature exports."""
     build(source_csv="study_score.csv",
           features=["hours_studied"],
           target="exam_score",
@@ -169,6 +172,18 @@ def main() -> None:
           axis_labels=["Hours studied"],
           target_label="Exam score",
           iterations=2000)
+
+    build(source_csv="study_score_multi.csv",
+          features=["hours_studied", "sleep_hours"],
+          target="exam_score",
+          output_json="linear_regression_multi.json",
+          title="Multiple Linear Regression",
+          subtitle="Fitting a plane through hours studied and sleep",
+          axis_labels=["Hours studied", "Sleep hours"],
+          target_label="Exam score",
+          # The two-feature problem is far more ill-conditioned (condition
+          # number ~5300 vs ~330), so it needs many more steps to settle.
+          iterations=50000)
 
 
 if __name__ == "__main__":
