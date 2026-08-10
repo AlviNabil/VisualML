@@ -65,6 +65,7 @@ struct LogisticTrainingView: View {
         }
         .navigationTitle("3 · Finding the curve")
         .navigationBarTitleDisplayMode(.inline)
+        .logisticInfo(export, topic: .loss)
         .onReceive(timer) { _ in
             guard playing else { return }
             if Int(frame) >= last { playing = false }

@@ -12,6 +12,7 @@ import SwiftUI
 struct LogisticFlowView: View {
     @State private var export: LogisticExport?
     @State private var loadError: String?
+    @State private var showInfo = false
 
     var body: some View {
         Group {
@@ -26,6 +27,20 @@ struct LogisticFlowView: View {
             }
         }
         .navigationTitle("Logistic Regression")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let export {
+                    Button { showInfo = true } label: { Image(systemName: "info.circle") }
+                        .accessibilityLabel("The maths behind this model")
+                        .disabled(export.dataset.n == 0)
+                }
+            }
+        }
+        .sheet(isPresented: $showInfo) {
+            if let export {
+                LogisticInfoSheet(export: export).presentationDetents([.large])
+            }
+        }
         .task {
             do { export = try LogisticExport.load() }
             catch { loadError = error.localizedDescription }

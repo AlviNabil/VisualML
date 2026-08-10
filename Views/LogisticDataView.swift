@@ -35,6 +35,7 @@ struct LogisticDataView: View {
         }
         .navigationTitle("1 · The data")
         .navigationBarTitleDisplayMode(.inline)
+        .logisticInfo(export, topic: .setup)
     }
 
     // MARK: - Copy
