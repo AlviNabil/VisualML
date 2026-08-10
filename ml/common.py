@@ -252,7 +252,33 @@ def log_loss(y: np.ndarray, p: np.ndarray) -> float:
     return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
 
 
-def fit_logistic_gd(data: dict, lr: float, iterations: int) -> tuple[list[dict], bool]:
+def logistic_loss_surface(X: np.ndarray, y: np.ndarray,
+                          w_range: tuple[float, float],
+                          b_range: tuple[float, float],
+                          steps: int = 61) -> dict:
+    """Sample the cross-entropy loss over a grid of (w, b) values.
+
+    Only valid for a single feature, where theta = [w, b] and the whole loss
+    landscape fits on a plane. `values[i][j]` is the loss at b_range[i],
+    w_range[j].
+    """
+    ws = np.linspace(w_range[0], w_range[1], steps)
+    bs = np.linspace(b_range[0], b_range[1], steps)
+    x = X[:, 0]
+    values = []
+    for b in bs:
+        row = [round(log_loss(y, sigmoid(w * x + b)), 6) for w in ws]
+        values.append(row)
+    return {
+        "wMin": round(float(ws[0]), 6), "wMax": round(float(ws[-1]), 6),
+        "bMin": round(float(bs[0]), 6), "bMax": round(float(bs[-1]), 6),
+        "steps": steps,
+        "values": values,
+    }
+
+
+def fit_logistic_gd(data: dict, lr: float, iterations: int,
+                    record_every: int = 1) -> tuple[list[dict], bool]:
     """Fit P(y=1) = sigma(X @ theta) by batch gradient descent, recording every step.
 
     Model:     z = X theta ,  p = sigma(z)
@@ -260,8 +286,11 @@ def fit_logistic_gd(data: dict, lr: float, iterations: int) -> tuple[list[dict],
     Gradient:  grad J   = (1/n) * X^T (p - y)
     Update:    theta   <- theta - lr * grad J
 
-    Each recorded step also stores `boundary`, the x where p = 0.5, i.e. the
-    solution of z = 0.
+    Each recorded step also stores `grad`, the gradient at that point, and
+    `boundary`, the x where p = 0.5, i.e. the solution of z = 0.
+
+    A snapshot is taken for the first 60 iterations, then every `record_every`
+    iterations, and always on the final one.
 
     Returns (history, diverged).
     """
@@ -278,22 +307,26 @@ def fit_logistic_gd(data: dict, lr: float, iterations: int) -> tuple[list[dict],
         if not math.isfinite(loss) or loss > 1e12:
             return history, True
 
-        p_test = sigmoid(predict(X_test, theta))
-        frame = {
-            "iter": i,
-            "theta": [round(float(t), 6) for t in theta],
-            "logLoss": round(loss, 6),
-            "accuracy": round(accuracy(y, (p >= 0.5).astype(int)), 6),
-            "testAccuracy": round(accuracy(y_test, (p_test >= 0.5).astype(int)), 6),
-        }
-        if theta.size == 2 and abs(theta[0]) > 1e-9:
-            frame["boundary"] = round(float(-theta[1] / theta[0]), 6)
-        history.append(frame)
+        gradient = (1.0 / n) * (X.T @ (p - y))
+
+        if i < 60 or i % record_every == 0 or i == iterations:
+            p_test = sigmoid(predict(X_test, theta))
+            frame = {
+                "iter": i,
+                "theta": [round(float(t), 6) for t in theta],
+                "grad": [round(float(g), 6) for g in gradient],
+                "logLoss": round(loss, 6),
+                "accuracy": round(accuracy(y, (p >= 0.5).astype(int)), 6),
+                "testAccuracy": round(accuracy(y_test, (p_test >= 0.5).astype(int)), 6),
+            }
+            if theta.size == 2 and abs(theta[0]) > 1e-9:
+                frame["boundary"] = round(float(-theta[1] / theta[0]), 6)
+            history.append(frame)
 
         if i == iterations:
             break
 
-        theta = theta - lr * (1.0 / n) * (X.T @ (p - y))
+        theta = theta - lr * gradient
 
     return history, False
 
