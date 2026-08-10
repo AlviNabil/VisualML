@@ -56,6 +56,7 @@ struct LogisticSigmoidView: View {
         }
         .navigationTitle("2 · The transformation")
         .navigationBarTitleDisplayMode(.inline)
+        .logisticInfo(export, topic: .model)
     }
 
     // MARK: - Copy

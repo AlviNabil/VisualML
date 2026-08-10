@@ -49,6 +49,7 @@ struct LogisticDecisionView: View {
         }
         .navigationTitle("4 · The decision")
         .navigationBarTitleDisplayMode(.inline)
+        .logisticInfo(export, topic: .deciding)
     }
 
     /// The hours at which the model's probability reaches the chosen cut.
