@@ -41,6 +41,13 @@ struct HomeView: View {
                             "cube.transparent", .purple)
                     }
                     NavigationLink {
+                        LogisticFlowView()
+                    } label: {
+                        row("Logistic Regression",
+                            "Step by step: from yes/no data to a probability curve",
+                            "point.topleft.down.curvedto.point.bottomright.up", .pink)
+                    }
+                    NavigationLink {
                         ClassifierView(viewModel: viewModel)
                     } label: {
                         row("Bag-of-Words + Regression",

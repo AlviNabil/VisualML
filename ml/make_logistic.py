@@ -14,6 +14,7 @@ The export carries one section per stage of the walkthrough:
     linearBaseline  a least-squares line fit to the 0/1 labels, for contrast
     fit             the converged model, its boundary and confusion matrices
     curve           the fitted sigmoid, sampled for plotting
+    empiricalRate   the observed pass rate in each band of hours
     lossSurface     cross-entropy over a grid of (w, b)
     runs            per-iteration history at several learning rates
 
@@ -117,6 +118,31 @@ def main() -> None:
               "p": round(float(sigmoid(np.array([theta[0] * g + theta[1]]))[0]), 6)}
              for g in grid]
 
+    # ---- The observed pass rate in each slice of hours ---------------------
+    # Grouping the raw 0/1 outcomes and averaging them gives the proportion who
+    # passed in each band, which already traces an S even before anything is
+    # fitted.
+    edges = np.linspace(lo, hi, 11)
+    empirical = []
+    for start, end in zip(edges[:-1], edges[1:]):
+        inside = (x >= start) & (x <= end if end == edges[-1] else x < end)
+        count = int(inside.sum())
+        if count == 0:
+            continue
+        empirical.append({
+            "binStart": round(float(start), 4),
+            "binEnd": round(float(end), 4),
+            "center": round(float((start + end) / 2), 4),
+            "count": count,
+            "passed": int(y[inside].sum()),
+            "rate": round(float(y[inside].mean()), 6),
+        })
+    print("\nObserved pass rate by hours studied:")
+    for band in empirical:
+        bar = "#" * int(round(band["rate"] * 24))
+        print(f"  {band['binStart']:5.2f}-{band['binEnd']:5.2f}h  "
+              f"{band['passed']:3d}/{band['count']:<3d} = {band['rate']:.2f}  {bar}")
+
     # ---- The loss landscape over (w, b) -----------------------------------
     surface = logistic_loss_surface(X_train, y_train,
                                     w_range=(-0.15, 1.45), b_range=(-8.0, 1.0))
@@ -160,6 +186,7 @@ def main() -> None:
             "majorityAccuracy": round(float(max(y_train.mean(), 1 - y_train.mean())), 6),
         },
         "curve": curve,
+        "empiricalRate": empirical,
         "lossSurface": surface,
         "runs": runs,
     }
