@@ -82,6 +82,19 @@ struct EmpiricalRate: Codable, Identifiable {
     var id: Double { center }
 }
 
+/// How the model scores when the cut between the two classes is moved.
+struct ThresholdPoint: Codable, Identifiable {
+    let threshold: Double
+    let accuracy: Double
+    let testAccuracy: Double
+    let confusion: [[Int]]
+    let testConfusion: [[Int]]
+    let precision: Double
+    let recall: Double
+
+    var id: Double { threshold }
+}
+
 /// Cross-entropy sampled over a grid of (w, b). `values[bIndex][wIndex]`.
 struct LossSurface: Codable {
     let wMin: Double, wMax: Double
@@ -148,6 +161,7 @@ struct LogisticExport: Codable {
     let fit: LogisticFit
     let curve: [CurveSample]
     let empiricalRate: [EmpiricalRate]
+    let thresholdSweep: [ThresholdPoint]
     let lossSurface: LossSurface
     let runs: [LogisticRun]
 

@@ -59,6 +59,18 @@ struct LogisticFlowView: View {
                     step("2", "The transformation",
                          "Score, then squash: z → σ(z)", "function")
                 }
+                NavigationLink {
+                    LogisticTrainingView(export: export)
+                } label: {
+                    step("3", "Finding the curve",
+                         "Gradient descent on the cross-entropy", "arrow.down.right.circle")
+                }
+                NavigationLink {
+                    LogisticDecisionView(export: export)
+                } label: {
+                    step("4", "The decision",
+                         "Where to cut, and what it costs", "checkmark.circle")
+                }
             }
         }
     }
