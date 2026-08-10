@@ -51,6 +51,8 @@ struct RegressionPlaneView: View {
     @State private var dragStart: CGSize = .zero
     @State private var showPlane = true
     @State private var showInfo = false
+    @State private var showTrain = true
+    @State private var showTest = true
 
     private let timer = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
 
@@ -95,6 +97,7 @@ struct RegressionPlaneView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header(export)
                 scene(export, step)
+                pointToggles(export)
                 rotationControls
                 equations(export, step)
                 learningRatePicker(export)
@@ -128,7 +131,8 @@ struct RegressionPlaneView: View {
 
     private func scene(_ export: RegressionExport, _ step: RegressionFrame) -> some View {
         PlaneSceneView(export: export, current: step,
-                       yaw: yaw, pitch: pitch, showPlane: showPlane)
+                       yaw: yaw, pitch: pitch, showPlane: showPlane,
+                       showTrain: showTrain, showTest: showTest)
             .frame(height: 330)
             .background(Color.gray.opacity(0.10))
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -143,6 +147,17 @@ struct RegressionPlaneView: View {
                     }
                     .onEnded { _ in dragStart = .zero }
             )
+    }
+
+    /// Tapping a group shows or hides those points inside the 3-D scene.
+    private func pointToggles(_ export: RegressionExport) -> some View {
+        HStack(spacing: 10) {
+            PointGroupToggle(label: "train", count: export.dataset.trainCount,
+                             color: .blue, isOn: $showTrain)
+            PointGroupToggle(label: "test", count: export.dataset.testCount,
+                             color: .green, isOn: $showTest)
+            Spacer()
+        }
     }
 
     private var rotationControls: some View {
@@ -283,6 +298,8 @@ struct PlaneSceneView: View {
     let yaw: Double
     let pitch: Double
     var showPlane: Bool = true
+    var showTrain: Bool = true
+    var showTest: Bool = true
 
     /// Grid resolution of the plane mesh.
     private let steps = 10
@@ -358,7 +375,7 @@ struct PlaneSceneView: View {
             }
 
             // The students.
-            for p in data.points {
+            for p in data.points where p.test ? showTest : showTrain {
                 let r = projector.project(x: nx(p.x[0]), y: ny(p.y), z: nz(p.x[1]))
                 let radius: CGFloat = p.test ? 4 : 3.4
                 let rect = CGRect(x: r.point.x - radius, y: r.point.y - radius,

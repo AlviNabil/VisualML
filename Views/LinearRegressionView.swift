@@ -18,6 +18,8 @@ struct LinearRegressionView: View {
     @State private var playing = false
     @State private var showResiduals = false
     @State private var showInfo = false
+    @State private var showTrain = true
+    @State private var showTest = true
 
     private let timer = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
 
@@ -65,13 +67,14 @@ struct LinearRegressionView: View {
                 header(export)
 
                 ScatterFitView(export: export, current: step,
-                               showResiduals: showResiduals)
+                               showResiduals: showResiduals,
+                               showTrain: showTrain, showTest: showTest)
                     .frame(height: 300)
                     .padding(8)
                     .background(Color.gray.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                legend
+                legend(export)
                 Toggle("Show residuals", isOn: $showResiduals)
                     .font(.subheadline)
 
@@ -105,20 +108,26 @@ struct LinearRegressionView: View {
         }
     }
 
-    private var legend: some View {
-        HStack(spacing: 16) {
-            Label { Text("train").font(.caption) } icon: {
-                Circle().fill(.blue).frame(width: 9, height: 9)
+    /// The legend doubles as the visibility control: tapping a group shows or
+    /// hides those points.
+    private func legend(_ export: RegressionExport) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                PointGroupToggle(label: "train", count: export.dataset.trainCount,
+                                 color: .blue, isOn: $showTrain)
+                PointGroupToggle(label: "test", count: export.dataset.testCount,
+                                 color: .green, isOn: $showTest)
+                Spacer()
             }
-            Label { Text("test").font(.caption) } icon: {
-                Circle().fill(.green).frame(width: 9, height: 9)
+            HStack(spacing: 16) {
+                Label { Text("closed form").font(.caption2) } icon: {
+                    Rectangle().fill(.gray).frame(width: 14, height: 2)
+                }
+                Label { Text("gradient descent").font(.caption2) } icon: {
+                    Rectangle().fill(Color.accentColor).frame(width: 14, height: 3)
+                }
             }
-            Label { Text("closed form").font(.caption) } icon: {
-                Rectangle().fill(.gray).frame(width: 14, height: 2)
-            }
-            Label { Text("gradient descent").font(.caption) } icon: {
-                Rectangle().fill(Color.accentColor).frame(width: 14, height: 3)
-            }
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -259,6 +268,37 @@ struct LinearRegressionView: View {
     }
 }
 
+// MARK: - Point visibility
+
+/// A tappable legend chip that shows or hides one group of points.
+struct PointGroupToggle: View {
+    let label: String
+    let count: Int
+    let color: Color
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isOn ? color : .clear)
+                    .overlay(Circle().stroke(color.opacity(isOn ? 1 : 0.6), lineWidth: 1.5))
+                    .frame(width: 10, height: 10)
+                Text(label).font(.caption)
+                Text("\(count)").font(.caption2.monospacedDigit()).opacity(0.7)
+            }
+            .foregroundStyle(isOn ? Color.primary : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(isOn ? color.opacity(0.15) : Color.gray.opacity(0.12),
+                        in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label) points")
+        .accessibilityValue(isOn ? "shown" : "hidden")
+    }
+}
+
 // MARK: - Scatter + fitted line
 
 /// Draws the data, the closed-form line and the current gradient-descent line.
@@ -266,6 +306,8 @@ struct ScatterFitView: View {
     let export: RegressionExport
     let current: RegressionFrame
     var showResiduals: Bool = false
+    var showTrain: Bool = true
+    var showTest: Bool = true
 
     var body: some View {
         Canvas { context, size in
@@ -289,10 +331,12 @@ struct ScatterFitView: View {
                                width: size.width - 2 * pad, height: size.height - 2 * pad))
             context.stroke(box, with: .color(.gray.opacity(0.25)), lineWidth: 1)
 
+            let visible = data.points.filter { $0.test ? showTest : showTrain }
+
             // Residual sticks from each point to the current line.
             if showResiduals {
                 var sticks = Path()
-                for p in data.points {
+                for p in visible {
                     let fitted = current.predict(p.x)
                     sticks.move(to: CGPoint(x: sx(p.x[0]), y: sy(p.y)))
                     sticks.addLine(to: CGPoint(x: sx(p.x[0]), y: sy(fitted)))
@@ -300,13 +344,16 @@ struct ScatterFitView: View {
                 context.stroke(sticks, with: .color(.red.opacity(0.35)), lineWidth: 1)
             }
 
-            // Points
-            for p in data.points {
+            // Points. With only one group on screen they can be drawn more
+            // solidly, since there is nothing left to see through.
+            let alone = showTrain != showTest
+            for p in visible {
                 let c = CGPoint(x: sx(p.x[0]), y: sy(p.y))
                 let r: CGFloat = p.test ? 3.5 : 3
                 let rect = CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)
+                let color: Color = p.test ? .green : .blue
                 context.fill(Path(ellipseIn: rect),
-                             with: .color(p.test ? .green.opacity(0.9) : .blue.opacity(0.65)))
+                             with: .color(color.opacity(alone ? 0.85 : (p.test ? 0.9 : 0.65))))
             }
 
             // Lines: closed form (dashed) then the current GD line (solid).
