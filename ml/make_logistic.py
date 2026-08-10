@@ -15,6 +15,7 @@ The export carries one section per stage of the walkthrough:
     fit             the converged model, its boundary and confusion matrices
     curve           the fitted sigmoid, sampled for plotting
     empiricalRate   the observed pass rate in each band of hours
+    thresholdSweep  scores at every decision cut, not just 0.5
     lossSurface     cross-entropy over a grid of (w, b)
     runs            per-iteration history at several learning rates
 
@@ -143,6 +144,30 @@ def main() -> None:
         print(f"  {band['binStart']:5.2f}-{band['binEnd']:5.2f}h  "
               f"{band['passed']:3d}/{band['count']:<3d} = {band['rate']:.2f}  {bar}")
 
+    # ---- Scores at every decision threshold --------------------------------
+    # 0.5 is only a default. Moving the cut changes which mistakes are made:
+    # a lower threshold catches more passes but wrongly flags more failures.
+    sweep = []
+    for cut in np.round(np.arange(0.05, 0.96, 0.05), 2):
+        train_at = (p_train >= cut).astype(int)
+        test_at = (p_test >= cut).astype(int)
+        tn, fp = confusion_matrix(y_train, train_at)[0]
+        fn, tp = confusion_matrix(y_train, train_at)[1]
+        sweep.append({
+            "threshold": float(cut),
+            "accuracy": round(accuracy(y_train, train_at), 6),
+            "testAccuracy": round(accuracy(y_test, test_at), 6),
+            "confusion": confusion_matrix(y_train, train_at),
+            "testConfusion": confusion_matrix(y_test, test_at),
+            # Of those flagged as passing, how many did; of those who passed,
+            # how many were caught.
+            "precision": round(float(tp / (tp + fp)), 6) if tp + fp > 0 else 0.0,
+            "recall": round(float(tp / (tp + fn)), 6) if tp + fn > 0 else 0.0,
+        })
+    best_cut = max(sweep, key=lambda s: s["accuracy"])
+    print(f"\nThreshold sweep: best training accuracy {best_cut['accuracy']:.3f} "
+          f"at p >= {best_cut['threshold']}")
+
     # ---- The loss landscape over (w, b) -----------------------------------
     surface = logistic_loss_surface(X_train, y_train,
                                     w_range=(-0.15, 1.45), b_range=(-8.0, 1.0))
@@ -187,6 +212,7 @@ def main() -> None:
         },
         "curve": curve,
         "empiricalRate": empirical,
+        "thresholdSweep": sweep,
         "lossSurface": surface,
         "runs": runs,
     }
