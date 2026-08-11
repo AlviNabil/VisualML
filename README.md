@@ -30,6 +30,54 @@ stage, and drill into the data representation at that point in the pipeline:
 
 ---
 
+## Linear & Logistic Regression
+
+The second half of the app leaves text behind and builds regression from
+first principles, on a simulated cohort of students (hours studied, sleep,
+and whether they passed). Every number on screen — every coefficient, every
+loss value, every point on a curve — is **computed in Python** (hand‑written
+NumPy; pandas only reads the CSV, scikit‑learn is used solely to split
+train/test) and shipped into the app as JSON. SwiftUI does no fitting of its
+own — it replays what Python already solved, which is what makes the
+sliders and the training playback feel live without a Python runtime on the
+phone.
+
+**Linear regression** predicts a *continuous* exam score from hours studied.
+It is fit two ways side by side — an exact **closed‑form** solution (the
+normal equations, solved in one step) and iterative **gradient descent** —
+so you can watch the iterative fit walk onto the exact answer and see
+exactly where a too‑large learning rate diverges.
+
+| | |
+|---|---|
+| <img src="screenshots/linear-regression.png" width="220" alt="Linear regression scatter and fit"> | **The fit** — train/test points, the closed‑form line (dashed) against the live gradient‑descent line (solid), with a toggle for the residuals. |
+| <img src="screenshots/linear-training.gif" width="220" alt="Gradient descent animating onto the closed-form line"> | **Watching it converge** — press play and gradient descent rotates the line, iteration by iteration, onto the closed‑form answer. The learning‑rate picker is shown as a multiple of the largest stable step size, so picking a rate above 1.00× visibly diverges. |
+| <img src="screenshots/linear-hyperplane.png" width="220" alt="Rotatable 3-D regression hyperplane"> | **Multiple regression** — add a second feature (sleep) and the fit becomes a plane through a 3‑D cloud instead of a line through 2‑D points. Drag to rotate it and watch R² improve over the single‑feature model. |
+
+**Logistic regression** predicts a *yes/no* outcome (did the student pass?)
+and is built as a four‑step walkthrough rather than a single screen, so the
+transformation from raw data to decision is never taken on faith:
+
+| | |
+|---|---|
+| <img src="screenshots/logistic-transformation.png" width="220" alt="Score then squash, staged"> | **1 · Score, then squash** — a student's hours are first turned into an unbounded score `z = w·x + b`, then squashed through the sigmoid into a 0–1 probability. Both stages are drawn, with the arithmetic spelled out at every step. |
+| <img src="screenshots/logistic-curve.png" width="220" alt="The fitted sigmoid over real students"> | **2 · The fitted curve** — the sigmoid drawn directly over the training data, with the decision boundary (p = 0.5) marked and a slider to drag any student's hours through the model live. |
+| <img src="screenshots/logistic-training.gif" width="220" alt="Gradient descent sliding down the cross-entropy loss landscape"> | **3 · Finding the curve** — gradient descent on the cross‑entropy loss, shown two ways at once: the S‑curve bending into place over the data, and the same descent traced as a path across the loss landscape (dark = low loss). |
+
+Logistic regression has **no closed form** — unlike the linear stage there
+is no exact line to check gradient descent against, which the app calls out
+explicitly, along with why cross‑entropy (not squared error) is the right
+loss for a 0/1 target, and how to read the fitted weight as an **odds
+ratio**. A fourth step lets you drag the decision threshold and watch
+precision and recall trade off in the confusion matrix in real time.
+
+Every regression screen has an ⓘ button opening a maths sheet — the normal
+equations, the gradient derivation, the loss‑surface geometry, and worked
+examples using the exact numbers the app shows — plus a sortable data table
+of every row behind the fit.
+
+---
+
 ## Topics covered so far
 
 The app is a working tour of a full classical‑NLP classification stack:
@@ -56,6 +104,28 @@ The app is a working tour of a full classical‑NLP classification stack:
 - **Seeded train/test split**
 - **Accuracy**, **confusion matrix**, and a live **decision boundary**
 
+**Linear regression**
+- **Closed‑form least squares** — the normal equations `XᵀXθ = Xᵀy`, with the
+  bias folded into `θ` via a design matrix, solved directly with no iteration
+- **Batch gradient descent** on the same design matrix, swept across a
+  learning‑rate ladder expressed as a fraction of the largest stable step size
+- **Multiple regression** — a second feature turns the fit from a line into a
+  plane, with a hand‑written 3‑D projection (yaw/pitch, painter's‑algorithm
+  depth sorting) to draw and rotate it
+- **R², RMSE, residuals**, and a train/test split evaluated throughout training
+
+**Logistic regression**
+- **Sigmoid squashing** `p = σ(w·x + b)` of an unbounded linear score into a
+  0–1 probability, contrasted directly against a least‑squares line that
+  predicts nonsensical values outside [0, 1]
+- **Binary cross‑entropy** loss and its gradient `(1/n)·Xᵀ(p − y)` — the same
+  "error × input" shape as linear regression's gradient, despite a different
+  model and a different loss
+- **No closed form** — gradient descent is the only solver, which the app
+  states and explains rather than glossing over
+- **Odds ratios** (`e^w`), a movable **decision threshold**, and a live
+  **precision/recall** trade‑off alongside the confusion matrix
+
 ---
 
 ## Requirements
@@ -64,8 +134,11 @@ The app is a working tour of a full classical‑NLP classification stack:
 - An **iPhone 17 Pro** simulator (or any iOS 26.5 simulator / device)
 - No third‑party packages — the app uses only **SwiftUI** and the standard library. The matrix/SVD math is hand‑written, so there’s nothing to install.
 
-> The dataset ships in the repo (`Models/dataset.csv`), so the app runs fully
-> offline with no setup.
+> The dataset and every regression result ship pre‑generated in the repo
+> (`Models/*.csv`, `Models/*.json`), so the app runs fully offline with no
+> setup. **Python 3.10+** (`numpy`, `pandas`, `scikit‑learn`) is only needed
+> if you want to regenerate the data or re‑run the regression fits yourself
+> — see [`ml/`](ml).
 
 ---
 
@@ -81,8 +154,10 @@ Then in Xcode:
 
 1. Select the **VisualML** scheme and an **iPhone 17 Pro** simulator.
 2. Press **▶ Run** (`⌘R`).
-3. From the home screen, tap **Bag of Words** to walk the pipeline, or
-   **Bag‑of‑Words + Regression** to jump straight to the classifier.
+3. From the home screen, tap **Bag of Words** to walk the text pipeline,
+   **Linear Regression** / **Multiple Linear Regression** / **Logistic
+   Regression** for the regression stages, or **Bag‑of‑Words + Regression**
+   to jump straight to the text classifier.
 
 ---
 
@@ -95,20 +170,32 @@ classifier knob just retrains). The heavy LSA compute runs **off the main
 thread** and is cached. All the heatmaps and scatter plots are drawn with
 SwiftUI `Canvas`.
 
+The regression stages follow a different split: **all fitting happens in
+Python**, offline, and the app only decodes and draws the JSON it produces
+— there is no `ViewModel` retraining anything on device.
+
 ```
 VisualML/
+├─ ml/                         // Python: the regression math (not bundled into the app)
+│  ├─ common.py                // closed form, gradient descent, sigmoid, cross-entropy
+│  ├─ generate_data.py         // simulates the student cohort
+│  ├─ make_linear.py           // fits + exports linear_regression(.json | _multi.json)
+│  └─ make_logistic.py         // fits + exports logistic_regression.json
 ├─ Models/
 │  ├─ DataPoint.swift          // one labelled document
 │  ├─ PipelineModels.swift     // config + every intermediate type (matrix, SVD result, …)
-│  └─ dataset.csv              // 500 docs (250 sport / 250 business)
+│  ├─ dataset.csv              // 500 docs (250 sport / 250 business)
+│  └─ *.json                   // precomputed regression fits (bundled resources)
 ├─ Services/
 │  ├─ DataSetLoader.swift      // CSV parser
 │  ├─ NLPProcessor.swift       // tokenize → vocabulary → document-term matrix
 │  ├─ Weighting.swift          // TF-IDF + L2 normalization
 │  ├─ MatrixMath.swift         // truncated SVD via power iteration + deflation
-│  └─ Classifier.swift         // logistic / linear / SVM gradient descent
+│  ├─ Classifier.swift         // logistic / linear / SVM gradient descent (text classifier)
+│  ├─ RegressionExport.swift   // Codable models for the linear-regression JSON
+│  └─ LogisticExport.swift     // Codable models for the logistic-regression JSON
 ├─ ViewModels/
-│  └─ PipelineViewModel.swift  // holds config + cached artifacts (MVVM)
+│  └─ PipelineViewModel.swift  // holds config + cached artifacts (MVVM, text pipeline only)
 └─ Views/
    ├─ HomeView.swift           // root menu
    ├─ BagOfWordsFlowView.swift // stage navigation (dataset → matrix → LSA)
@@ -116,7 +203,18 @@ VisualML/
    ├─ MatrixHeatmapView.swift  // the document-term heatmap
    ├─ LSAView.swift            // 2-D latent-space scatter + scree plot
    ├─ ClassifierView.swift     // decision boundary + metrics + live classify
-   ├─ TrainingView.swift       // step-by-step gradient-descent playback
+   ├─ TrainingView.swift       // step-by-step gradient-descent playback (text classifier)
+   ├─ LinearRegressionView.swift    // closed form vs gradient descent, one feature
+   ├─ RegressionPlaneView.swift     // multiple regression: rotatable 3-D hyperplane
+   ├─ RegressionInfoSheet.swift     // linear-regression maths sheet
+   ├─ RegressionDataTableView.swift // sortable table behind either linear fit
+   ├─ LossParabolaView.swift        // the tangent-on-a-parabola gradient-step explainer
+   ├─ LogisticFlowView.swift        // 4-step logistic stage menu
+   ├─ LogisticDataView.swift        // step 1 — the data, and why a line fails
+   ├─ LogisticSigmoidView.swift     // step 2 — score, then squash
+   ├─ LogisticTrainingView.swift    // step 3 — training playback + loss landscape
+   ├─ LogisticDecisionView.swift    // step 4 — movable threshold + confusion matrix
+   ├─ LogisticInfoSheet.swift       // logistic-regression maths sheet
    └─ …Info sheets, layout helpers
 ```
 
