@@ -125,9 +125,14 @@ def main() -> None:
     elbow = []
     for k in K_FOR_ELBOW:
         history = best_of_restarts(Xs, k, range(RESTARTS_PER_ELBOW_K))
-        final_inertia = history[-1]["inertia"]
-        elbow.append({"k": k, "inertia": round(final_inertia, 6)})
-        print(f"  k={k}  inertia={final_inertia:8.4f}")
+        final = history[-1]
+        elbow.append({
+            "k": k,
+            "inertia": round(final["inertia"], 6),
+            "centroids": [[round(v, 4) for v in c] for c in descale(final["centroids"], mean, std)],
+            "assignments": [int(a) for a in final["assignments"]],
+        })
+        print(f"  k={k}  inertia={final['inertia']:8.4f}")
 
     # ---- Individual restarts at the headline k, kept separately -------------
     print(f"\nFive individual restarts at k={HEADLINE_K} (no best-of selection):")
