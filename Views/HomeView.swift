@@ -56,8 +56,17 @@ struct HomeView: View {
                     }
                 }
 
+                Section("Clustering") {
+                    NavigationLink {
+                        KMeansFlowView()
+                    } label: {
+                        row("K-Means Clustering",
+                            "Step by step: unlabeled data → groups → centroids",
+                            "circle.grid.cross.fill", .teal)
+                    }
+                }
+
                 Section("More models — coming soon") {
-                    comingSoon("Clustering (k-means)", "circle.grid.cross.fill")
                     comingSoon("Decision tree", "arrow.triangle.branch")
                     comingSoon("Neural network", "brain")
                 }
