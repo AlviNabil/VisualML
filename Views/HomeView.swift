@@ -67,8 +67,8 @@ struct HomeView: View {
                 }
 
                 Section("More models — coming soon") {
-                    comingSoon("Decision tree", "arrow.triangle.branch")
                     comingSoon("Neural network", "brain")
+                    comingSoon("Transformer", "square.stack.3d.up")
                 }
             }
             .navigationTitle("VisualML")
