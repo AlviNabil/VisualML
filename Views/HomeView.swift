@@ -66,9 +66,18 @@ struct HomeView: View {
                     }
                 }
 
+                Section("Neural networks") {
+                    NavigationLink {
+                        NeuralFlowView()
+                    } label: {
+                        row("Neural Network",
+                            "Step by step: forward pass, activations, backprop",
+                            "brain", .indigo)
+                    }
+                }
+
                 Section("More models — coming soon") {
-                    comingSoon("Decision tree", "arrow.triangle.branch")
-                    comingSoon("Neural network", "brain")
+                    comingSoon("Transformer", "square.stack.3d.up")
                 }
             }
             .navigationTitle("VisualML")
