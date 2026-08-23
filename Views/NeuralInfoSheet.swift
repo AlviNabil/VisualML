@@ -19,6 +19,8 @@ struct NeuralInfoSheet: View {
     enum Topic: String, CaseIterable, Identifiable {
         case setup = "Setup"
         case architecture = "Layers"
+        case forward = "Forward"
+        case activations = "Activations"
         var id: String { rawValue }
     }
 
@@ -38,6 +40,8 @@ struct NeuralInfoSheet: View {
                         switch topic ?? initialTopic {
                         case .setup: setupSection
                         case .architecture: architectureSection
+                        case .forward: forwardSection
+                        case .activations: activationsSection
                         }
                     }
                     .padding(.horizontal)
@@ -137,6 +141,111 @@ struct NeuralInfoSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.gray.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: - Forward
+
+    private var forwardSection: some View {
+        let trace = export.forwardTrace
+        return VStack(alignment: .leading, spacing: 14) {
+            heading("Inference is three lines of arithmetic")
+            body("Running the network on a point is nothing more than repeating "
+                 + "the same two operations once per layer:")
+            formula("z = a·W + b\na = f(z)")
+            body("The output of one layer becomes the input of the next, and the "
+                 + "last layer's activation is the answer.")
+
+            heading("Followed end to end")
+            body(String(format: "For the point (%.3f, %.3f):",
+                        trace.input[0], trace.input[1]))
+            formula(chainSummary(trace))
+            note(String(format: "The final number, %.4f, is the probability the "
+                        + "network assigns to the second class. Its true class is "
+                        + "%d, so this one is right.",
+                        trace.prediction, trace.label))
+
+            heading("Where the shapes come from")
+            body("Each weight matrix has one row per incoming value and one "
+                 + "column per unit in the layer, so multiplying by it maps a "
+                 + "vector of one width to a vector of another. That is the only "
+                 + "thing changing the number of values from layer to layer.")
+
+            heading("A whole batch at once")
+            body("Nothing above changes when many points are pushed through "
+                 + "together — a matrix of n rows goes in, a matrix of n rows "
+                 + "comes out, and the same weights are used for every row. That "
+                 + "is why this arithmetic runs well on hardware built for "
+                 + "matrix multiplication.")
+        }
+    }
+
+    private func chainSummary(_ trace: ForwardTrace) -> String {
+        var lines: [String] = ["x        (\(trace.input.count) values)"]
+        for step in trace.steps {
+            lines.append("layer \(step.layer)  \(step.input.count) → \(step.a.count)"
+                         + "   \(step.activation)")
+        }
+        lines.append(String(format: "output   %.4f", trace.prediction))
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Activations
+
+    private var activationsSection: some View {
+        let hiddenLayers = export.architecture.hiddenSizes.count
+        let sigmoid = export.activations.first { $0.name == "sigmoid" }
+        let relu = export.activations.first { $0.name == "relu" }
+        return VStack(alignment: .leading, spacing: 14) {
+            heading("What the squash is for")
+            body("Applied to each value on its own, after the weighted sum. Its "
+                 + "only job is to be non-linear — without it, any stack of "
+                 + "layers collapses into a single linear one.")
+
+            heading("Why its derivative is the thing that matters")
+            body("Training sends an error signal backward through the layers, "
+                 + "and at every layer that signal is multiplied by f′(z):")
+            formula("dL/dz[l] = dL/da[l] ⊙ f′(z[l])")
+            body("So the derivative is a volume knob on learning. Where f′ is "
+                 + "near zero, almost nothing gets through, and the units in that "
+                 + "layer barely move however wrong the answer was.")
+
+            heading("The cost of a small slope")
+            if let sigmoid, let relu {
+                body(String(format: "Sigmoid's derivative peaks at %.2f. Across "
+                            + "%d hidden layers that is at best %.3f of the "
+                            + "signal reaching the first layer — and only for "
+                            + "units sitting exactly at the steepest point. "
+                            + "ReLU's peaks at %.2f, so nothing shrinks.",
+                            sigmoid.maxSlope, hiddenLayers,
+                            pow(sigmoid.maxSlope, Double(hiddenLayers)),
+                            relu.maxSlope))
+                note(String(format: "Measured on this network: sigmoid needs %@ "
+                            + "epochs to reach 95%% accuracy, ReLU needs %@. Same "
+                            + "data, same shape, same starting weights — the only "
+                            + "difference is the squash.",
+                            sigmoid.training.epochsTo95.map(String.init) ?? "—",
+                            relu.training.epochsTo95.map(String.init) ?? "—"))
+            }
+
+            heading("Choosing one")
+            bullet("Hidden layers: ReLU or one of its smooth relatives (GELU, "
+                   + "ELU). They do not saturate on the positive side.")
+            bullet("Binary output: sigmoid, because a probability is wanted and "
+                   + "the range (0, 1) is exactly right.")
+            bullet("Multi-class output: softmax, which normalises a whole vector "
+                   + "of scores so they sum to one.")
+            note("ReLU has its own failure: a unit driven permanently negative "
+                 + "has a derivative of exactly zero for every input and never "
+                 + "recovers. Leaky ReLU keeps a shallow slope there precisely to "
+                 + "avoid that.")
+        }
+    }
+
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("•").font(.subheadline).foregroundStyle(.secondary)
+            Text(text).font(.subheadline).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Building blocks

@@ -76,6 +76,20 @@ struct NeuralFlowView: View {
                          "Layers, weights, and what the model stores",
                          "square.stack.3d.up")
                 }
+                NavigationLink {
+                    NeuralForwardView(export: export)
+                } label: {
+                    step("3", "The forward pass",
+                         "One point through every layer, with the arithmetic",
+                         "arrow.right")
+                }
+                NavigationLink {
+                    NeuralActivationsView(export: export)
+                } label: {
+                    step("4", "Activations",
+                         "Six squashes, their slopes, and why it matters",
+                         "function")
+                }
             }
         }
     }
