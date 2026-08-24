@@ -20,7 +20,7 @@ stage, and drill into the data representation at that point in the pipeline:
 
 | | |
 |---|---|
-| <img src="screenshots/home.png" width="240" alt="Home menu"> | **Home** — pick a model family. *Bag of Words* walks the text‑representation stages; *Bag‑of‑Words + Regression* trains a classifier on top. The greyed‑out rows are placeholders for models added later. |
+| <img src="screenshots/home.png" width="240" alt="Home menu"> | **Home** — pick a model family: the text‑representation pipeline, the four regression stages, or k‑means clustering. Each opens its own step‑by‑step walkthrough. The greyed‑out rows at the bottom are what's coming next. |
 | <img src="screenshots/matrix.png" width="240" alt="Document-Term matrix heatmap"> | **Document‑Term Matrix** — 500 documents × 150 terms drawn as a heatmap, one row per document, grouped by class. Toggle **Raw counts ⇄ TF‑IDF** and **L2‑normalize** and watch the cells re‑weight: ubiquitous words dim, rare telling words brighten. |
 | <img src="screenshots/lsa.png" width="240" alt="LSA 2-D scatter"> | **LSA projection** — every document compressed to its top‑2 latent components (truncated SVD) and plotted as a point. The documents fan out into two separate arms (a “V”), so the two classes are clearly — and linearly — separable. |
 | <img src="screenshots/classifier.png" width="240" alt="Decision boundary"> | **Classifier** — fit **Logistic / Linear / SVM** on the 2‑D LSA points and see the decision boundary `wᵀx + b = 0` drawn through the data. Drag the learning‑rate, iterations, and regularization sliders to see the line move. |
@@ -78,6 +78,31 @@ of every row behind the fit.
 
 ---
 
+## K‑Means Clustering
+
+Every stage above had a target to predict. Clustering has none: the input is
+180 simulated customers described only by **annual spend** and **visit
+frequency**, and the task is to find the groups hiding in the numbers.
+As with the regression stages, all the mathematics runs in Python
+(hand‑written NumPy — scikit‑learn appears only as a cross‑check oracle) and
+the app replays the exported result.
+
+| | |
+|---|---|
+| <img src="screenshots/kmeans-data.png" width="220" alt="The raw unlabeled customer data"> | **1 · The data** — the dataset drawn with no colour at all, because there are no labels to colour by. Even so the cloud is visibly lumpy: denser patches with gaps between them. That structure is what the algorithm goes looking for. |
+| <img src="screenshots/kmeans-elbow.png" width="220" alt="Elbow curve with a live k picker"> | **2 · Choosing k** — k has to be chosen up front, and inertia always falls as k grows, so the lowest score is never the answer. The elbow curve shows where extra clusters stop paying for themselves; the picker refits the map live at every k from 1 to 8, so you can watch k=2 merge real groups and k=7 split them. |
+| <img src="screenshots/kmeans-training.png" width="220" alt="Centroids migrating during training"> | **3 · Finding the clusters** — the assign‑then‑average loop, played back round by round with the centroids visibly migrating and inertia falling. Five different k‑means++ starting points are provided: four converge to the same answer, and one gets stuck in a worse one — kept deliberately, because k‑means only ever finds *a* local optimum. |
+| <img src="screenshots/kmeans-result.png" width="220" alt="Final clusters and centroid table"> | **4 · The result** — the finished map, plus the four centroids listed in real units ($k spent, visits/month). Those centroids **are** the model: where a regression keeps coefficients, k‑means keeps one point per cluster. A toggle compares the discovered groups against the segments the data was generated from. |
+
+The clusters recovered here match the true generating segments **100%**, and
+the best‑of‑restarts inertia agrees with scikit‑learn’s `KMeans` exactly
+(24.5683 from both). The ⓘ sheet covers why the features are standardized
+before any distance is measured, how k‑means++ seeds itself, why the
+assign/update loop can never increase inertia, and what the algorithm quietly
+assumes about cluster shape.
+
+---
+
 ## Topics covered so far
 
 The app is a working tour of a full classical‑NLP classification stack:
@@ -125,6 +150,17 @@ The app is a working tour of a full classical‑NLP classification stack:
   states and explains rather than glossing over
 - **Odds ratios** (`e^w`), a movable **decision threshold**, and a live
   **precision/recall** trade‑off alongside the confusion matrix
+
+**Clustering (unsupervised)**
+- **K‑means** — the assign‑then‑average loop, with the proof sketch for why
+  neither step can ever increase inertia, so the loop always settles
+- **Inertia** `Σ ‖x − centroid(x)‖²` as the objective, and the **elbow method**
+  for choosing k when lower inertia is always available by raising k
+- **k‑means++ initialization** — seeding centroids proportionally to squared
+  distance from those already chosen, and **restarts** to escape the local
+  optima plain k‑means can get trapped in
+- **Feature standardization**, without which the larger‑range feature
+  dominates every distance
 
 ---
 
@@ -180,7 +216,10 @@ VisualML/
 │  ├─ common.py                // closed form, gradient descent, sigmoid, cross-entropy
 │  ├─ generate_data.py         // simulates the student cohort
 │  ├─ make_linear.py           // fits + exports linear_regression(.json | _multi.json)
-│  └─ make_logistic.py         // fits + exports logistic_regression.json
+│  ├─ make_logistic.py         // fits + exports logistic_regression.json
+│  ├─ generate_cluster_data.py // simulates the customer cohort
+│  ├─ kmeans.py                // k-means++, assign/update loop, inertia
+│  └─ make_kmeans.py           // fits + exports kmeans.json
 ├─ Models/
 │  ├─ DataPoint.swift          // one labelled document
 │  ├─ PipelineModels.swift     // config + every intermediate type (matrix, SVD result, …)
@@ -193,7 +232,8 @@ VisualML/
 │  ├─ MatrixMath.swift         // truncated SVD via power iteration + deflation
 │  ├─ Classifier.swift         // logistic / linear / SVM gradient descent (text classifier)
 │  ├─ RegressionExport.swift   // Codable models for the linear-regression JSON
-│  └─ LogisticExport.swift     // Codable models for the logistic-regression JSON
+│  ├─ LogisticExport.swift     // Codable models for the logistic-regression JSON
+│  └─ ClusterExport.swift      // Codable models for the k-means JSON
 ├─ ViewModels/
 │  └─ PipelineViewModel.swift  // holds config + cached artifacts (MVVM, text pipeline only)
 └─ Views/
@@ -215,6 +255,13 @@ VisualML/
    ├─ LogisticTrainingView.swift    // step 3 — training playback + loss landscape
    ├─ LogisticDecisionView.swift    // step 4 — movable threshold + confusion matrix
    ├─ LogisticInfoSheet.swift       // logistic-regression maths sheet
+   ├─ KMeansFlowView.swift          // 4-step clustering stage menu
+   ├─ ClusterMapView.swift          // shared scatter: points + centroids
+   ├─ KMeansDataView.swift          // step 1 — the unlabeled data
+   ├─ KMeansElbowView.swift         // step 2 — elbow curve + live k picker
+   ├─ KMeansTrainingView.swift      // step 3 — assign/average playback
+   ├─ KMeansResultView.swift        // step 4 — final map + centroid table
+   ├─ KMeansInfoSheet.swift         // k-means maths sheet
    └─ …Info sheets, layout helpers
 ```
 
@@ -232,9 +279,5 @@ characteristic spread and makes the structure easy to see.
 
 ## Roadmap
 
-The home screen already lists what’s next — each will get the same
-“visualize every intermediate state” treatment:
-
-- **Clustering (k‑means)**
-- **Decision tree**
-- **Neural network**
+- **Transformer architecture** — the next stage, building on the neural
+  network above the same way each earlier stage built on the last
