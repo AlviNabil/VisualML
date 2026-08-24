@@ -103,6 +103,32 @@ assumes about cluster shape.
 
 ---
 
+## Neural Network
+
+Every earlier classifier draws a **straight** boundary. The dataset here is
+built to break that: 300 points, one class a disc at the centre, the other a
+ring around it. A straight line can only ever manage **56.3%** — the network
+gets **100%** by stacking two hidden layers of 4 units (37 parameters total)
+and bending the line into a closed loop. All the math is hand‑written NumPy;
+scikit‑learn appears only as a cross‑check oracle.
+
+| | |
+|---|---|
+| <img src="screenshots/neural-data.png" width="220" alt="The ring dataset, with a straight boundary failing"> | **1 · The data** — the disc‑and‑ring shape, plus the best straight boundary a logistic regression can find, so the failure is visible before the network ever runs. |
+| <img src="screenshots/neural-forward.png" width="220" alt="One point traced layer by layer through the network"> | **3 · The forward pass** — one point carried through every layer, with the weighted sum `z = a·W + b`, the actual weight matrix, and the squashed activation `a = f(z)` spelled out at each stop. |
+| <img src="screenshots/neural-activations.png" width="220" alt="Six activation functions and their derivatives"> | **4 · Activations** — six functions (sigmoid, tanh, ReLU, leaky ReLU, ELU, GELU) plotted with their derivatives, because that derivative is exactly what backpropagation multiplies by on the way back. |
+| <img src="screenshots/neural-training.png" width="220" alt="The decision boundary bending into a circle over 3,000 epochs"> | **6 · Training** — press play and watch 3,000 epochs of full‑batch gradient descent bend the boundary from a straight guess into a closed circle around the inner class. |
+
+The activation choice changes more than the shape of the curve: with the same
+architecture and learning rate, **sigmoid** needs **790 epochs** to cross 95%
+accuracy, where **tanh** takes 32 and **ReLU** takes just **19** — the payoff
+of a derivative that does not vanish in its tails. The ⓘ sheet covers the
+backpropagation chain rule layer by layer, why sigmoid paired with
+cross‑entropy collapses to a single `(p − y)` term at the output, and what
+each hidden unit ends up responding to once trained.
+
+---
+
 ## Topics covered so far
 
 The app is a working tour of a full classical‑NLP classification stack:
@@ -162,6 +188,18 @@ The app is a working tour of a full classical‑NLP classification stack:
 - **Feature standardization**, without which the larger‑range feature
   dominates every distance
 
+**Neural networks**
+- **Forward propagation** — `z = a·W + b` then `a = f(z)`, layer by layer,
+  traced on one real point with every matrix and number shown
+- **Backpropagation** — the chain rule applied layer by layer, `dz`, `dW`,
+  `db` and `da_prev` all kept and displayed, including the output‑layer
+  shortcut where sigmoid + cross‑entropy collapse to `(p − y)`
+- **Six activation functions** (sigmoid, tanh, ReLU, leaky ReLU, ELU, GELU)
+  with their derivatives, and a trained‑speed comparison showing why a
+  vanishing derivative stalls learning
+- **Xavier initialization**, **full‑batch gradient descent**, and a
+  non‑linear decision boundary a straight‑line classifier cannot draw
+
 ---
 
 ## Requirements
@@ -219,7 +257,10 @@ VisualML/
 │  ├─ make_logistic.py         // fits + exports logistic_regression.json
 │  ├─ generate_cluster_data.py // simulates the customer cohort
 │  ├─ kmeans.py                // k-means++, assign/update loop, inertia
-│  └─ make_kmeans.py           // fits + exports kmeans.json
+│  ├─ make_kmeans.py           // fits + exports kmeans.json
+│  ├─ generate_rings_data.py   // simulates the disc-and-ring dataset
+│  ├─ neural.py                // forward/backward pass, activations, training loop
+│  └─ make_neural.py           // fits + exports neural.json
 ├─ Models/
 │  ├─ DataPoint.swift          // one labelled document
 │  ├─ PipelineModels.swift     // config + every intermediate type (matrix, SVD result, …)
@@ -233,7 +274,8 @@ VisualML/
 │  ├─ Classifier.swift         // logistic / linear / SVM gradient descent (text classifier)
 │  ├─ RegressionExport.swift   // Codable models for the linear-regression JSON
 │  ├─ LogisticExport.swift     // Codable models for the logistic-regression JSON
-│  └─ ClusterExport.swift      // Codable models for the k-means JSON
+│  ├─ ClusterExport.swift      // Codable models for the k-means JSON
+│  └─ NeuralExport.swift       // Codable models for the neural-network JSON
 ├─ ViewModels/
 │  └─ PipelineViewModel.swift  // holds config + cached artifacts (MVVM, text pipeline only)
 └─ Views/
@@ -262,6 +304,15 @@ VisualML/
    ├─ KMeansTrainingView.swift      // step 3 — assign/average playback
    ├─ KMeansResultView.swift        // step 4 — final map + centroid table
    ├─ KMeansInfoSheet.swift         // k-means maths sheet
+   ├─ NeuralFlowView.swift          // 6-step neural-network stage menu
+   ├─ NetworkDiagramView.swift      // shared node-and-edge network diagram
+   ├─ NeuralDataView.swift          // step 1 — the ring data + failing straight line
+   ├─ NeuralArchitectureView.swift  // step 2 — layers, weight shapes, parameter count
+   ├─ NeuralForwardView.swift       // step 3 — one point traced through every layer
+   ├─ NeuralActivationsView.swift   // step 4 — six activations + trained-speed comparison
+   ├─ NeuralBackpropView.swift      // step 5 — gradients flowing back, layer by layer
+   ├─ NeuralTrainingView.swift      // step 6 — boundary bending into a circle
+   ├─ NeuralInfoSheet.swift         // neural-network maths sheet
    └─ …Info sheets, layout helpers
 ```
 
