@@ -90,6 +90,20 @@ struct NeuralFlowView: View {
                          "Six squashes, their slopes, and why it matters",
                          "function")
                 }
+                NavigationLink {
+                    NeuralBackpropView(export: export)
+                } label: {
+                    step("5", "Backpropagation",
+                         "The error travelling back, layer by layer",
+                         "arrow.left")
+                }
+                NavigationLink {
+                    NeuralTrainingView(export: export)
+                } label: {
+                    step("6", "Training",
+                         "Watch the boundary bend into a circle",
+                         "play.circle")
+                }
             }
         }
     }

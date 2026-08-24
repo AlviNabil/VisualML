@@ -21,6 +21,8 @@ struct NeuralInfoSheet: View {
         case architecture = "Layers"
         case forward = "Forward"
         case activations = "Activations"
+        case backprop = "Backprop"
+        case training = "Training"
         var id: String { rawValue }
     }
 
@@ -42,6 +44,8 @@ struct NeuralInfoSheet: View {
                         case .architecture: architectureSection
                         case .forward: forwardSection
                         case .activations: activationsSection
+                        case .backprop: backpropSection
+                        case .training: trainingSection
                         }
                     }
                     .padding(.horizontal)
@@ -239,6 +243,120 @@ struct NeuralInfoSheet: View {
                  + "recovers. Leaky ReLU keeps a shallow slope there precisely to "
                  + "avoid that.")
         }
+    }
+
+    // MARK: - Backprop
+
+    private var backpropSection: some View {
+        let trace = export.backwardTrace
+        return VStack(alignment: .leading, spacing: 14) {
+            heading("The question backpropagation answers")
+            body("For every one of the "
+                 + "\(export.architecture.parameterCount) numbers in the network: "
+                 + "if this number were nudged slightly, would the loss go up or "
+                 + "down, and by how much? That is the gradient, and once it is "
+                 + "known every weight can be moved the right way.")
+
+            heading("Why it is not done by brute force")
+            body("Each parameter could be nudged one at a time and the loss "
+                 + "remeasured, but that costs a full forward pass per parameter. "
+                 + "Backpropagation gets every gradient in a single backward "
+                 + "sweep, by reusing the chain rule instead of recomputing.")
+
+            heading("The starting point")
+            body("A sigmoid output paired with cross-entropy loss collapses to "
+                 + "one term — the derivatives cancel:")
+            formula("dL/dz = p − y")
+            note(String(format: "Here: %.4f − %d = %+.4f. Everything downstream "
+                        + "is that one number being distributed.",
+                        trace.prediction, trace.label, trace.outputError))
+
+            heading("Then the same three moves, per layer")
+            formula("dL/dW = aᵀ · dz        (this layer's weight update)\n"
+                    + "dL/db = dz            (its bias update)\n"
+                    + "dL/da = dz · Wᵀ       (what to hand back)\n"
+                    + "dz    = dL/da ⊙ f′(z) (scaled by the slope below)")
+            body("The first says a weight is blamed in proportion to what flowed "
+                 + "through it. The last is where the activation function decides "
+                 + "how much signal continues.")
+            chainWorked
+
+            heading("Why it fades")
+            body("Every step back multiplies by a weight matrix and by an "
+                 + "activation slope. Both are usually below one, so the signal "
+                 + "shrinks with depth — the vanishing gradient. It is why ReLU "
+                 + "replaced sigmoid in hidden layers, and why very deep networks "
+                 + "need skip connections to give the gradient a shortcut.")
+        }
+    }
+
+    private var chainWorked: some View {
+        let step = export.backwardTrace.steps.first { $0.daPrev != nil }
+        guard let step, let da = step.daPrev?.first, let slope = step.primeZ?.first else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            note(String(format: "Worked through on one unit: %.4f arriving from "
+                        + "the layer above, times a slope of %.4f, leaves %.4f to "
+                        + "carry on with.", da, slope, da * slope))
+        )
+    }
+
+    // MARK: - Training
+
+    private var trainingSection: some View {
+        let a = export.architecture
+        return VStack(alignment: .leading, spacing: 14) {
+            heading("The loop")
+            formula("repeat:\n"
+                    + "  forward   — predict every point\n"
+                    + "  loss      — measure how wrong\n"
+                    + "  backward  — get every gradient\n"
+                    + "  update    — W ← W − η · dL/dW")
+            body(String(format: "Run %d times at a learning rate of %g. Each pass "
+                        + "uses every point at once, which is why the loss curve "
+                        + "is smooth rather than jagged.", a.epochs, a.learningRate))
+
+            heading("Where the shape comes from")
+            body("The first hidden layer can only draw straight cuts — each unit "
+                 + "is a logistic regression. The second layer takes weighted "
+                 + "combinations of those cuts, and a combination of half-planes "
+                 + "can enclose a region. That is how a closed loop appears "
+                 + "without anything in the model being told about circles.")
+            note("Turn on the hidden-unit maps in the step itself: the first "
+                 + "layer's units are visibly straight-edged, and the second "
+                 + "layer's are not.")
+
+            heading("What it reached")
+            HStack(spacing: 10) {
+                metric("accuracy",
+                       String(format: "%.1f%%", export.training.finalAccuracy * 100))
+                metric("loss", String(format: "%.4f", export.training.finalLoss))
+                metric("a straight line",
+                       String(format: "%.1f%%", export.dataset.linearBaselineAccuracy * 100))
+            }
+
+            heading("What is missing here")
+            bullet("No held-out test set — this stage measures fit, not "
+                   + "generalisation. The regression stages cover that.")
+            bullet("Full-batch descent. Real training uses mini-batches, which "
+                   + "are noisier but far cheaper per step.")
+            bullet("Plain gradient descent. Adam and friends adapt the step size "
+                   + "per parameter and are what is actually used.")
+        }
+    }
+
+    private func metric(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.subheadline.bold().monospacedDigit())
+                .lineLimit(1).minimumScaleFactor(0.6)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color.gray.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func bullet(_ text: String) -> some View {
